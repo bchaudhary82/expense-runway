@@ -1,0 +1,278 @@
+# Expense Runway — build instructions for Claude Code
+
+Read this first, every session. Then `PRD.md`, then `DESIGN.md`.
+
+## What we're building
+
+A passcode-protected web app for my work team. Upload a month of
+expense files → reconcile receipts against the corporate card statement → add a
+purpose to each line → download a Word doc in the exact team format. The team
+then keys it into JD Edwards by hand (no JDE API access — the Word doc is the
+ceiling, and that's fine).
+
+Today the whole thing is manual and takes about an hour a month per person.
+Target: under five minutes.
+
+## Who you're working with
+
+Bilal is non-technical and learning as he builds. This is deliberate
+vibe-coding — the build process is itself the portfolio artifact.
+
+- Explain what you're doing in plain English before you do it. No unexplained jargon.
+- One clear step at a time. Don't dump five files and move on.
+- When something breaks, say what broke and what you're trying next.
+- When there's a real choice to make, ask — don't silently pick.
+- Keep `BUILD_LOG.md` updated at the end of every session: what was built, what
+  decisions got made and why, what's next. This is portfolio evidence.
+
+## Non-negotiables
+
+0. **Verify rendered output, not just structure.** Any change to
+   `src/lib/report/buildReport.ts` must pass `npm run verify:layout`, which
+   exports the document to PDF and reads what actually landed on each page.
+   *Added July 31, 2026 after four rounds on one bug:* `pageBreakBefore` was
+   valid markup that the renderer ignored, so every XML assertion — counts,
+   positions, dimensions, page geometry — passed while the layout was wrong, and
+   the page count even came out correct. **Structural checks on a file format do
+   not verify what the format renders.**
+
+1. **The statement parser must pass 90/90 on the eval suite before anything
+   ships.** Reference run: `cd evals && python3 run_eval.py`. Amounts and dates
+   are where trust dies — no partial credit.
+   *Added July 30, 2026:* every statement must also pass its **self-check** —
+   each one prints its own transaction count and billed total on page 1, and the
+   parsed rows must match both. This holds on months with no filed report to
+   compare against, which is how a dropped refund line got caught.
+1b. **Never discard a statement line silently.** Any line beginning with a date
+   inside the transaction table either parses into a row or is returned in
+   `skipped` and shown to the user. A report that is quietly missing a line
+   looks complete and is wrong — the worst failure this tool can produce.
+2. **Never send corporate credit card statement data to the Claude API.** It
+   parses deterministically. That's the privacy story and the accuracy story.
+   The API is only for receipt *images*.
+3. **AI-extracted *values* never land in the report.** Every number, date,
+   currency code and vendor name in the output Word doc comes from the parsed
+   statement. Receipt extraction exists to answer "which statement line does
+   this receipt belong to?" — nothing more.
+   *Clarified July 30, 2026:* the receipt **image itself does go in the
+   document** — it is the original file, not something a model produced, so this
+   rule is untouched by it. What must never happen is a model's reading of a
+   receipt becoming a number on the report.
+4. **Report generation is blocked until every reconciliation flag is
+   resolved.** No silent gaps. That's the whole accounting discipline of the
+   manual process, and it's why the team will trust it.
+5. **Nothing is stored server-side.** Files processed in memory, results live in
+   the browser, refresh = clean slate.
+6. **Never commit `evals/ground-truth/`.** Real merchant names and amounts from a
+   real corporate card. It's gitignored — keep it that way.
+   *Extended July 31, 2026:* the gitignore is not the whole story. **BUILD_LOG.md
+   also contains real merchant names, amounts, dates and statement filenames
+   carrying the card identifier `……`** — they got there as worked examples
+   while debugging. CLAUDE.md and FIRST_SESSION.md each carry one too. That data
+   is fine in a **private** repo and is NOT fine in a public one. Before this
+   project is ever made public or written up, the build log must be redacted:
+   swap real merchants for the invented ones already used in `verify-blocking.ts`
+   (`COFFEE BAR`, `RIDE CO`, `GRILL HOUSE`), and drop the statement filenames.
+   The lessons survive redaction untouched; the merchant names carry none of the
+   value.
+7. **No airline logo, marks, or company name in the product name.** See DESIGN.md.
+
+## Stack
+
+- Next.js (App Router) + TypeScript + Tailwind
+- `unpdf` or `pdfjs-dist` for PDF text + word coordinates
+- `mammoth` or `jszip` to pull embedded images out of the rideshare `.docx`
+- `docx` npm package for output
+- `@anthropic-ai/sdk` for receipt vision — start on **Haiku 4.5**
+- Vercel for hosting; passcode in an env var
+
+## The one algorithm that matters
+
+`evals/reference/parse_statement.py` is a working, proven parser. It scores
+90/90 on five months of real statements. Port it to TypeScript exactly as
+written — including the column-position logic for splitting vendor from
+location. A regex-only approach was already tried and it mangles every
+multi-word vendor name. Read the docstring before you touch it.
+
+**Accepted receipt file types** *(added July 31, 2026)*: PDF, Word `.docx`,
+and image files — `.jpg`, `.jpeg`, `.png`, `.webp`. Photographed receipts are a
+normal input, not an edge case. `.heic` (the iPhone default) **cannot** be
+decoded and must be reported to the user with instructions to export as JPEG —
+never skipped silently. Anything else is refused by name, per non-negotiable 1b.
+
+**Refunds and credits are normal.** They print with the minus sign inside the
+dollar sign — `$-12.24`, not `-$12.24` — and the amount pattern must allow it.
+None of the five eval months contains a refund; July 2026 was the first, and the
+original pattern silently dropped it, overstating the report by the refunded
+amount. Refund rows carry through to the report exactly as printed.
+
+## The six checks
+
+| Command | Asks | Costs |
+|---|---|---|
+| `npm run eval` | Does the statement parse exactly? 90/90 + self-check on every month | free |
+| `npm run verify:report` | Is the .docx structurally right — order, images, sizes, page setup? | free |
+| `npm run verify:layout` | **Does it actually render one expense per page?** | free |
+| `npm run verify:blocking` | Are all five flag types raised, is generation blocked until each is resolved, and do deletions re-key receipts and purposes correctly? | free |
+| `npm run verify:auth` | Can a session token be forged or extended, and does the lockout hold? | free |
+| `npm run eval:receipts` | Does each receipt reach the right line? | ~7¢ |
+
+The first five run on every change. The last needs an API key and only matters
+when receipt matching changes.
+
+## Build order
+
+Do these in order. Don't skip ahead — each step is testable on its own.
+
+1. **Scaffold** — Next.js + Tailwind + the design tokens from DESIGN.md. One
+   page, the four-step stepper, nothing functional. Bilal should be able to
+   look at it and recognise the booking-flow feel.
+2. **Statement parser + eval** — port the Python, wire up a TS eval that reads
+   `evals/ground-truth/*.json`. **Stop here until it's 90/90.**
+3. **Upload + parse** — drag files in, statement gets parsed, line items appear
+   in a table. Still no AI.
+4. **docx generation** — the table becomes a downloadable Word doc: the
+   transaction and purpose lines, in order, correctly formatted. This is the
+   *text skeleton* of the report; the images arrive in step 5. **Done.**
+5. **Receipts — extraction, matching, and embedding.** Three separate jobs, and
+   only the middle one needs AI:
+   - **Extract (no AI):** pull the embedded images out of the rideshare `.docx` with
+     `jszip`, render the scanned paper-receipt PDF pages to images, render the
+     statement PDF's transaction page for the screenshot at the top.
+   - **Match (Haiku vision):** read date / amount / merchant off each receipt
+     image purely to decide which statement line it belongs to.
+   - **Embed (no AI):** place each receipt image after its own entry, and the
+     statement screenshot at the top.
+
+   A receipt embedded under the wrong expense is a real error in a filed
+   document and looks completely plausible. Treat mis-assignment as seriously as
+   a wrong amount.
+6. **Reconciliation + blocking** — match, flag, block. **Done.**
+7. **Purposes + review polish** — editable purpose column, copy-down. **Done.**
+8. **Passcode + rate limiting.** **Done.**
+9. **Deploy to Vercel.**
+
+### After launch — known work, in priority order
+
+Agreed July 31, 2026 after measuring the real Vercel limits. Not optional
+polish: items 10 and 11 are things that will break or bite in normal use.
+
+10. **Reclaim payload headroom.** ~20 min. Vercel caps request AND response
+    bodies at **4.5 MB each**. Measured on June: **3.31 MB up, 3.42 MB down** —
+    roughly 30% headroom. A month with ~35 receipts, or a colleague whose
+    scanner produces heavier files, hits `413 FUNCTION_PAYLOAD_TOO_LARGE` and
+    the report doesn't build.
+    *First move:* drop `JPEG_QUALITY` 92 → ~85 and `MAX_EDGE` 2000 → 1600 in
+    `extract.ts`, which roughly halves both figures. **Re-check legibility on
+    the faded thermal receipt** (`June paper receipts.pdf`, image 16) — that one
+    is the canary, and quality settings have already shipped unreadable receipts
+    once (session 5).
+
+11. **Rate limiting in a shared store.** ~1 hr. `rateLimit.ts` counts in memory,
+    per serverless instance, so parallel or distributed attempts get more than
+    five tries. Swap the Map for Upstash Redis or Vercel KV (free tiers cover
+    this volume comfortably); the function signatures don't change.
+    *Note:* with a five-word passcode the limiter is no longer the thing
+    standing between an attacker and the data — it's there to stop someone
+    hammering the API and burning function invocations. Do it before wider
+    rollout, not before launch.
+
+12. **Extraction in the browser.** ~half a day. The proper fix for item 10:
+    unzip the `.docx` and render PDF pages client-side, so only small receipt
+    images cross the wire for matching and the finished document is assembled
+    locally. Removes the payload ceiling entirely and means receipt files never
+    reach the server at all. Only worth doing if 10 stops being enough.
+
+Steps 1–4 need no API key. Get an API key in place before step 5.
+
+## Output format (exact)
+
+> **Corrected July 30, 2026.** The previous version of this section was wrong —
+> it described a blank line where the receipt image actually goes. See
+> BUILD_LOG.md, "Session 4b — the format was wrong."
+
+The report opens with a screenshot of the corporate card statement, then repeats
+a three-part block per expense:
+
+```
+[screenshot of the whole corporate card statement]    ← once, at the top
+
+Jun 08 2026    $34.42    $34.42    CAD    CAD    RIDESHARE CO/TRIP
+Client site travel — Calgary
+[receipt image for this expense]
+
+Apr 20 2026    $3.00    $4.21    USD    CAD    ORCA
+[ADD PURPOSE HERE]
+[receipt image for this expense]
+```
+
+Transaction line, purpose line, **receipt image** — in that order, the image
+after its own entry. Four spaces between fields. Chronological. Foreign
+currency: original amount first, CAD second. Empty purpose defaults to
+`[ADD PURPOSE HERE]`.
+
+**One expense per page.** Page 1 is the statement screenshot alone; every page
+after it holds exactly one transaction line, its purpose line and its receipt.
+
+Use an **explicit page-break run** (`<w:br w:type="page"/>`) at the END of every
+image paragraph, except the last. Do **not** use the `pageBreakBefore` paragraph
+property — the filed reports use it, but renderers ignore it, and the document
+then flows continuously so each page ends up carrying an image plus the *next*
+entry's text. That failure keeps the page count correct (26 for June), so it
+cannot be caught by counting.
+
+Also set `keepNext` on the transaction and purpose paragraphs, so they can never
+be separated from their receipt.
+
+*Corrected July 31, 2026 after three failed attempts.* **Verify layout by
+rendering the document and reading page by page** — structural checks on the XML
+passed every time while the output was wrong.
+
+**Every image must fit a 6.5in × 8.0in box**, aspect ratio preserved, scaled up
+or down to fill it. Letter with 1in margins leaves 6.5 × 9.0in of content; the
+spare inch holds the transaction and purpose lines. *Added July 31, 2026 — page
+breaks alone did not fix the staggering, because images were being scaled by
+width only. A till receipt is roughly 1:4, so a width-constrained one came out
+10–11in tall, overflowed the page and dragged the next entry with it.* Measured
+from the filed reports: every image there is within 1.92–6.50in wide and
+1.88–8.00in tall, and none exceeds the printable area. `verify:report` checks
+every image, not just the largest.
+
+Paragraph count is therefore `1 + (3 × expenses)`, and image count is
+`1 + expenses`.
+
+**There is no blank line anywhere in the document.** An image paragraph holds no
+text, so reading a `.docx` as plain text makes it look blank — that is how the
+error got written down. Verified across all five filed reports:
+
+| Month | Expenses | Paragraphs | Images | Genuinely blank paragraphs |
+|---|---|---|---|---|
+| February 2026 | 19 | 58 | 20 | **0** |
+| March 2026 | 15 | 46 | 16 | **0** |
+| April 2026 | 18 | 55 | 19 | **0** |
+| May 2026 | 13 | 40 | 14 | **0** |
+| June 2026 | 25 | 76 | 26 | **0** |
+
+Confirmed by opening the images, not just counting them: in the June report,
+image 1 is a screenshot of the statement table, image 2 is the rideshare receipt for
+CA$31.04 on June 7 sitting under the June 7 line, and image 26 is the taco bar
+receipt for $36.16 under the final line.
+
+## Reference data (already in this folder)
+
+Everything the build needs is inside `evals/` — no need to look outside it:
+
+- `evals/fixtures/statements/` — five real corporate card statements, Feb–Jun 2026
+- `evals/fixtures/receipts-june/` — June's receipts: scanned paper PDF, rideshare docx, two hotel folios
+- `evals/ground-truth/` — the 90 verified line items from the reports actually filed
+- `evals/reference/parse_statement.py` — the proven parser
+- `evals/run_eval.py` — reference scorer
+
+`fixtures/` and `ground-truth/` are real corporate card data. Both are
+gitignored. Never commit them, never deploy them, never put them in the
+portfolio write-up.
+
+## Working style
+
+Bilal is using the Claude Code desktop app, not the terminal. Don't hand him
+shell commands to run himself — run them yourself and explain what happened.

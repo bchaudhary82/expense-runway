@@ -1,0 +1,17 @@
+evals/ground-truth/
+evals/fixtures/
+.env*
+node_modules/
+.next/
+__pycache__/
+
+# Next.js / build output
+/out/
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+
+# Never let a statement or receipt PDF sit in the deployed public folder
+public/*.pdf
+public/*.docx

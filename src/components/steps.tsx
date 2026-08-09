@@ -1,0 +1,309 @@
+"use client";
+
+/**
+ * Step 1 — Upload.
+ *
+ * The other three steps are their own files: ReconcileStep, PurposesStep and
+ * DownloadStep. This one stayed here because it owns the drop zone, the file
+ * list and the "here's what we read" confirmation.
+ *
+ * No real statement or receipt data is hard-coded anywhere in src/, and none
+ * ever should be — that data belongs only in evals/, which is gitignored.
+ */
+import { useRef, useState, type DragEvent } from "react";
+import type { ParseResponse } from "@/app/api/parse-statement/route";
+import {
+  billedTotal,
+  checkAgainstDeclared,
+  formatMoney,
+} from "@/lib/statement/format";
+import { LineItemsTable } from "./LineItemsTable";
+import { Button, Card, IconCircle, StatusTag } from "./ui";
+
+function StepHeading({ title, blurb }: { title: string; blurb: string }) {
+  return (
+    <div className="mb-5">
+      <h1 className="font-display text-[24px] font-bold text-ink">{title}</h1>
+      <p className="mt-1 text-[15px] text-body">{blurb}</p>
+    </div>
+  );
+}
+
+export function UploadStep({
+  parsed,
+  onParsed,
+  onFiles,
+  onReset,
+}: {
+  parsed: ParseResponse | null;
+  onParsed: (result: ParseResponse) => void;
+  onFiles: (files: File[]) => void;
+  onReset: () => void;
+}) {
+  const [files, setFiles] = useState<File[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function addFiles(incoming: FileList | null) {
+    if (!incoming) return;
+    setError(null);
+    setFiles((current) => {
+      const seen = new Set(current.map((f) => `${f.name}:${f.size}`));
+      const next = [...current];
+      for (const f of incoming) {
+        if (!seen.has(`${f.name}:${f.size}`)) next.push(f);
+      }
+      return next;
+    });
+  }
+
+  function handleDrop(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setDragging(false);
+    addFiles(e.dataTransfer.files);
+  }
+
+  async function readFiles() {
+    setBusy(true);
+    setError(null);
+    try {
+      const body = new FormData();
+      for (const f of files) body.append("files", f);
+
+      const res = await fetch("/api/parse-statement", { method: "POST", body });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error ?? "Something went wrong reading those files.");
+        return;
+      }
+      onFiles(files);
+      onParsed(data as ParseResponse);
+    } catch {
+      setError("Couldn't reach the server. Check your connection and try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function startOver() {
+    setFiles([]);
+    setError(null);
+    onReset();
+  }
+
+  /* ---- after a successful parse ---- */
+  if (parsed) {
+    const total = billedTotal(parsed.rows);
+    const selfCheck = checkAgainstDeclared(parsed.rows, parsed.declared);
+    return (
+      <>
+        <StepHeading
+          title="Here's what we read"
+          blurb={`From ${parsed.statementFile}. Check the total against your statement before going on.`}
+        />
+
+        {parsed.skipped.length > 0 && (
+          <Card className="mb-4 border-l-4 border-l-block p-6">
+            <StatusTag tone="block" icon="!">
+              {parsed.skipped.length === 1
+                ? "1 line couldn't be read"
+                : `${parsed.skipped.length} lines couldn't be read`}
+            </StatusTag>
+            <p className="mt-2 text-[15px] text-ink">
+              These lines are on your statement but are{" "}
+              <span className="font-semibold">not in the report below</span>, and
+              the total doesn&rsquo;t include them. Add them by hand, or send the
+              statement over so the parser can be fixed.
+            </p>
+            <ul className="mt-3 space-y-1">
+              {parsed.skipped.map((s) => (
+                <li
+                  key={`${s.page}-${s.text}`}
+                  className="rounded-[4px] bg-canvas px-3 py-2 font-mono text-[13px] text-ink"
+                >
+                  {s.text}
+                  <span className="ml-2 font-sans text-body">(page {s.page})</span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+
+        <Card className="mb-4 p-6">
+          <div className="grid gap-6 sm:grid-cols-3">
+            <div>
+              <div className="font-display text-[28px] font-bold tabular-nums text-ink">
+                {parsed.rows.length}
+              </div>
+              <div className="text-[14px] text-body">line items</div>
+            </div>
+            <div>
+              <div className="font-display text-[28px] font-bold tabular-nums text-ink">
+                {formatMoney(total)}
+              </div>
+              <div className="text-[14px] text-body">total billed, CAD</div>
+            </div>
+            <div>
+              <div className="mt-1.5">
+                {selfCheck.ok ? (
+                  <StatusTag tone="ok" icon="✓">
+                    Balances to the statement
+                  </StatusTag>
+                ) : (
+                  <StatusTag tone="block" icon="!">
+                    Doesn&rsquo;t balance
+                  </StatusTag>
+                )}
+              </div>
+              <div className="mt-1 text-[14px] text-body">
+                {selfCheck.ok
+                  ? `matches the ${parsed.declared?.transactionCount} transactions and total printed on the statement`
+                  : selfCheck.reason}
+              </div>
+            </div>
+          </div>
+
+          {parsed.otherFiles.length > 0 && (
+            <p className="mt-6 border-t border-line pt-4 text-[13px] text-body">
+              Set aside for the reconcile step: {parsed.otherFiles.join(", ")}
+            </p>
+          )}
+
+          {parsed.notices.map((n) => (
+            <p key={n} className="mt-4 text-[13px] text-warn">
+              {n}
+            </p>
+          ))}
+        </Card>
+
+        <Card className="overflow-hidden">
+          <LineItemsTable rows={parsed.rows} showPurpose={false} />
+        </Card>
+
+        <div className="mt-6 flex flex-wrap items-center gap-4">
+          <Button variant="secondary" onClick={startOver}>
+            Start over with different files
+          </Button>
+          <span className="text-[14px] text-body">
+            Nothing was saved. Refreshing this page clears everything.
+          </span>
+        </div>
+      </>
+    );
+  }
+
+  /* ---- before parsing ---- */
+  return (
+    <>
+      <StepHeading
+        title="Upload your month"
+        blurb="Drop in the corporate card statement plus any receipts — Uber summaries, scanned paper receipts, hotel folios."
+      />
+
+      <Card className="p-6">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-stretch">
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={handleDrop}
+            className={`flex flex-1 flex-col items-center justify-center rounded-[8px] border-2 border-dashed px-6 py-12 text-center transition-colors ${
+              dragging ? "border-teal bg-teal/5" : "border-line bg-canvas"
+            }`}
+          >
+            <IconCircle>
+              <span aria-hidden="true" className="text-[18px] text-teal">
+                ↑
+              </span>
+            </IconCircle>
+            <p className="mt-3 text-[15px] font-semibold text-ink">
+              Drag your files here
+            </p>
+            <p className="mt-1 text-[14px] text-body">
+              or{" "}
+              <button
+                type="button"
+                onClick={() => inputRef.current?.click()}
+                className="font-semibold text-teal underline-offset-2 hover:underline"
+              >
+                browse
+              </button>{" "}
+              — PDF, Word, or a photo of a receipt
+            </p>
+            <input
+              ref={inputRef}
+              type="file"
+              multiple
+              accept=".pdf,.docx,.jpg,.jpeg,.png,.webp,application/pdf,image/*"
+              className="hidden"
+              onChange={(e) => {
+                addFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+          </div>
+
+          <div className="flex flex-col justify-center gap-3 lg:w-[240px]">
+            <Button
+              onClick={readFiles}
+              disabled={files.length === 0 || busy}
+              className="w-full"
+            >
+              {busy ? "Reading…" : "Read my files"}
+            </Button>
+            <p className="text-center text-[13px] text-body">
+              Nothing is saved. Files are read in memory and cleared when you
+              refresh.
+            </p>
+          </div>
+        </div>
+
+        {files.length > 0 && (
+          <ul className="mt-5 divide-y divide-line border-t border-line">
+            {files.map((f) => (
+              <li
+                key={`${f.name}:${f.size}`}
+                className="flex items-center gap-3 py-2.5 text-[14px]"
+              >
+                <span className="flex-1 truncate text-ink">{f.name}</span>
+                <span className="tabular-nums text-body">
+                  {(f.size / 1024).toFixed(0)} KB
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFiles((c) =>
+                      c.filter((x) => !(x.name === f.name && x.size === f.size)),
+                    )
+                  }
+                  className="rounded-[4px] px-2 text-[13px] font-semibold text-teal hover:underline"
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      {error && (
+        <Card className="mt-4 border-l-4 border-l-block p-6">
+          <StatusTag tone="block" icon="!">
+            Couldn&rsquo;t read that
+          </StatusTag>
+          <p className="mt-2 text-[15px] text-ink">{error}</p>
+        </Card>
+      )}
+
+      <p className="mt-4 text-[13px] text-body">
+        The statement is required. Everything else is optional — anything missing
+        gets flagged in the next step.
+      </p>
+    </>
+  );
+}

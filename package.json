@@ -1,0 +1,39 @@
+{
+  "name": "expense-runway",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "eval": "tsx scripts/run-eval.ts",
+    "verify:report": "tsx scripts/verify-report.ts",
+    "eval:receipts": "tsx scripts/eval-receipts.ts",
+    "verify:layout": "tsx scripts/verify-layout.ts",
+    "verify:blocking": "tsx scripts/verify-blocking.ts",
+    "verify:auth": "tsx scripts/verify-auth.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
+    "@napi-rs/canvas": "^1.0.3",
+    "docx": "^9.7.1",
+    "next": "16.2.12",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "unpdf": "^1.8.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "dotenv": "^17.4.2",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.12",
+    "tailwindcss": "^4",
+    "tsx": "^4.23.1",
+    "typescript": "^5"
+  },
+  "description": "Upload a month of expenses, reconcile, and download the report."
+}

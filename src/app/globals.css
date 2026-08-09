@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Colour tokens — DESIGN.md
+   Sampled from live computed styles on the source site (July 2026), not guessed.
+   Token names kept exactly as the spec writes them so provenance stays traceable.
+   --------------------------------------------------------------------------- */
+:root {
+  --brand-teal: #017f7c; /* primary buttons, links, active step, focus rings */
+  --brand-teal-hover: #018380; /* button hover */
+  /* Same hue, lifted for use ON the dark bar. #017F7C only reaches 3:1 there;
+     this reaches 5.1:1. Never use it on white — it is too light. */
+  --brand-teal-on-dark: #3fa9a5;
+  --brand-ink: #1c383c; /* headings, dark bars */
+  --brand-ink-deep: #152d32; /* top navigation */
+  --brand-body: #666666; /* paragraphs, table cells, helper text */
+  --brand-surface: #ffffff; /* cards, review table */
+  --brand-canvas: #f7f7f7; /* page background, icon circles, zebra rows */
+  --brand-line: #e3e6e6; /* borders, table rules */
+
+  /* Status colours — chosen to sit alongside the palette, not sampled */
+  --status-ok: #0e7c4a; /* matched line, reconciled */
+  --status-warn: #b8730b; /* low-confidence extraction, amount mismatch */
+  --status-block: #b3261e; /* missing receipt, blocking error */
+}
+
+/* Expose the tokens to Tailwind as utilities: bg-teal, text-ink, border-line, … */
+@theme inline {
+  --color-teal: var(--brand-teal);
+  --color-teal-hover: var(--brand-teal-hover);
+  --color-teal-on-dark: var(--brand-teal-on-dark);
+  --color-ink: var(--brand-ink);
+  --color-ink-deep: var(--brand-ink-deep);
+  --color-body: var(--brand-body);
+  --color-surface: var(--brand-surface);
+  --color-canvas: var(--brand-canvas);
+  --color-line: var(--brand-line);
+  --color-ok: var(--status-ok);
+  --color-warn: var(--status-warn);
+  --color-block: var(--status-block);
+
+  /* Typography — Noto family, loaded via next/font/google in layout.tsx */
+  --font-sans: var(--font-noto-sans), Arial, sans-serif;
+  --font-display: var(--font-noto-sans-display), Arial, sans-serif;
+
+  /* Component shapes — measured from the site */
+  --radius-btn: 4px;
+  --radius-card: 8px;
+}
+
+body {
+  background: var(--brand-canvas);
+  color: var(--brand-body);
+}
+
+/* Teal focus ring everywhere, per DESIGN.md */
+:focus-visible {
+  outline: 2px solid var(--brand-teal);
+  outline-offset: 2px;
+}
