@@ -50,15 +50,17 @@ export async function POST(request: Request) {
     input.images.map(async (img, i) => ({
       i,
       source: img.source,
+      page: img.index,
       reading: await readReceipt(img.data),
       thumb: await thumbnail(img.data),
     })),
   );
 
-  const receipts: ReconcileReceipt[] = readings.map(({ i, source, reading, thumb }) => ({
+  const receipts: ReconcileReceipt[] = readings.map(({ i, source, page, reading, thumb }) => ({
     ...reading,
     imageIndex: i,
     source,
+    page,
     thumb: `data:image/jpeg;base64,${Buffer.from(thumb.data).toString("base64")}`,
   }));
 

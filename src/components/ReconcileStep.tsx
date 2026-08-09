@@ -204,17 +204,34 @@ export function ReconcileStep({
                     {flag.choices.find((c) => c.id === chosen)?.effect}
                   </p>
                 ) : (
-                  <div className="mt-4 flex flex-wrap gap-3">
-                    {flag.choices.map((choice) => (
-                      <Button
-                        key={choice.id}
-                        variant="secondary"
-                        onClick={() => onResolve({ ...resolutions, [flag.id]: choice.id })}
-                        title={choice.effect}
-                      >
-                        {choice.label}
-                      </Button>
-                    ))}
+                  <div className="mt-4 flex flex-col gap-2">
+                    {flag.choices.map((choice) => {
+                      const preview =
+                        choice.imageIndex !== undefined
+                          ? data.receipts.find((r) => r.imageIndex === choice.imageIndex)
+                          : undefined;
+                      return (
+                        <button
+                          key={choice.id}
+                          type="button"
+                          onClick={() =>
+                            onResolve({ ...resolutions, [flag.id]: choice.id })
+                          }
+                          title={choice.effect}
+                          className="flex items-center gap-3 rounded-[4px] border border-teal px-3 py-2 text-left text-[14px] font-semibold text-teal hover:bg-canvas"
+                        >
+                          {preview && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={preview.thumb}
+                              alt=""
+                              className="h-14 w-11 shrink-0 rounded-[2px] border border-line bg-surface object-contain"
+                            />
+                          )}
+                          <span>{choice.label}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>

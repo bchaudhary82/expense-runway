@@ -29,6 +29,8 @@ export interface ReceiptCandidate extends ReceiptReading {
   /** Index into the extracted-images array. */
   imageIndex: number;
   source: string;
+  /** Page within that file, so two receipts from one PDF can be told apart. */
+  page?: number;
 }
 
 export interface Match {

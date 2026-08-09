@@ -40,6 +40,15 @@ export interface FlagChoice {
   label: string;
   /** What this choice does to the report, in plain language. */
   effect: string;
+  /**
+   * The receipt this choice would attach, so the screen can show a thumbnail.
+   *
+   * Without it, four unreadable receipts from the same hotel produce four
+   * buttons all reading "Attach: WESTIN HOTELS & RESORTS" — identical, and
+   * therefore impossible to choose between. The picture is the only thing that
+   * distinguishes them.
+   */
+  imageIndex?: number;
 }
 
 export interface Flag {
@@ -86,6 +95,31 @@ function findDuplicates(receipts: ReceiptCandidate[]): Map<number, number> {
     if (seen === undefined) firstSeen.set(key, r.imageIndex);
     else duplicateOf.set(r.imageIndex, seen);
   }
+
+  /* Pages of one multi-page document, rather than two receipts.
+     A hotel folio runs to two pages and every page repeats the same total, so
+     each page arrives looking like a separate receipt for the same amount. One
+     page matches its statement line and the other is left over, reported as a
+     receipt that matches nothing — which is confusing, because it plainly does.
+     Same FILE, same merchant, same total is the signal: those are pages, not
+     purchases. The dates differ between pages, which is why the check above
+     misses them.
+     Deliberately narrow: pages of a scanned batch are separate receipts and
+     almost never share both a merchant and an exact total. "They're different
+     receipts" remains one click away either way. */
+  const byDocument = new Map<string, number>();
+  for (const r of receipts) {
+    if (!r.amount || duplicateOf.has(r.imageIndex)) continue;
+    const key = [
+      r.source,
+      r.amount,
+      (r.merchant ?? "").toUpperCase().replace(/[^A-Z0-9]/g, ""),
+    ].join("|");
+    const seen = byDocument.get(key);
+    if (seen === undefined) byDocument.set(key, r.imageIndex);
+    else duplicateOf.set(r.imageIndex, seen);
+  }
+
   return duplicateOf;
 }
 
@@ -145,12 +179,23 @@ function describeRow(row: StatementRow): string {
   return `${row.vendor} — ${row.date}, ${formatMoney(row.billedAmount)}`;
 }
 
+/** What was read off the receipt. May be nothing at all. */
 function describeReceipt(r: ReceiptCandidate): string {
   const bits: string[] = [];
   if (r.merchant) bits.push(r.merchant);
   if (r.date) bits.push(r.date);
   if (r.amount) bits.push(formatMoney(r.amount));
-  return bits.length ? bits.join(" — ") : `${r.source} (couldn't be read)`;
+  return bits.length ? bits.join(" — ") : "nothing could be read from it";
+}
+
+/**
+ * Where the receipt physically came from — file and page.
+ *
+ * Always present, always unique, and unaffected by how well the image read. It
+ * is what makes two receipts telling the same story tellable apart.
+ */
+function whereFrom(r: ReceiptCandidate): string {
+  return r.page ? `${r.source}, page ${r.page}` : r.source;
 }
 
 export function reconcile(
@@ -219,9 +264,10 @@ export function reconcile(
       kind: "duplicate",
       imageIndex,
       message:
-        `${describeReceipt(r)} was supplied twice — once in ` +
-        `${byImage.get(originalIndex)?.source ?? "another file"} and again in ` +
-        `${r.source}. Only one copy belongs in the report.`,
+        `${describeReceipt(r)} appears twice — ` +
+        `${whereFrom(byImage.get(originalIndex)!)} and ${whereFrom(r)}. ` +
+        `Either it was supplied twice, or these are two pages of one document ` +
+        `that repeats its total. Only one copy belongs in the report.`,
       choices: [
         {
           id: "drop-duplicate",
@@ -246,7 +292,7 @@ export function reconcile(
       imageIndex: a.imageIndex,
       rowIndexes: a.rowIndexes,
       message:
-        `${describeReceipt(r)} fits ${a.rowIndexes.length} statement lines ` +
+        `${whereFrom(r)} — ${describeReceipt(r)} — fits ${a.rowIndexes.length} statement lines ` +
         `equally well. Guessing would be wrong about half the time, so it needs ` +
         `you to pick.`,
       choices: a.rowIndexes.map((i) => ({
@@ -268,11 +314,15 @@ export function reconcile(
       rowIndex,
       message: `${describeRow(row)} is on your statement, but no receipt matches it.`,
       choices: [
-        ...spare.map((i) => ({
-          id: `${ATTACH}${i}`,
-          label: `Attach: ${describeReceipt(byImage.get(i)!)}`,
-          effect: "That receipt is used for this line.",
-        })),
+        ...spare.map((i) => {
+          const r = byImage.get(i)!;
+          return {
+            id: `${ATTACH}${i}`,
+            label: `${whereFrom(r)} — ${describeReceipt(r)}`,
+            effect: "That receipt is used for this line.",
+            imageIndex: i,
+          };
+        }),
         {
           id: "receipt-lost",
           label: "Receipt lost — include anyway",
@@ -296,8 +346,9 @@ export function reconcile(
       kind: "extra-receipt",
       imageIndex,
       message:
-        `${describeReceipt(r)} doesn't match any line on your statement. It may ` +
-        `be a cash expense, a different month, or paid on another card.`,
+        `${whereFrom(r)} — ${describeReceipt(r)} — doesn't match any line on ` +
+        `your statement. It may be a cash expense, a different month, paid on ` +
+        `another card, or simply too faint to read.`,
       choices: [
         {
           id: "ignore",

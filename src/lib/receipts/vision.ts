@@ -145,28 +145,49 @@ const MONTHS: Record<string, string> = {
   jul: "Jul", aug: "Aug", sep: "Sep", oct: "Oct", nov: "Nov", dec: "Dec",
 };
 
+const ORDER = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+/**
+ * Does this date actually exist?
+ *
+ * A model returned "Sep 31 2026" — September has 30 days. The old normaliser
+ * accepted any day from 01 to 31 and passed it straight through to matching,
+ * where it silently failed to line up with anything. An impossible date is the
+ * clearest possible signal that a reading is wrong, so it becomes null and the
+ * receipt falls back to being matched on its amount alone.
+ */
+function isRealDate(month: string, day: number, year: number): boolean {
+  const index = ORDER.indexOf(month);
+  if (index < 0 || day < 1) return false;
+  const d = new Date(Date.UTC(year, index, day));
+  return d.getUTCMonth() === index && d.getUTCDate() === day;
+}
+
 /** Accept the several shapes a model might return; reject anything else. */
 function normaliseDate(value: string | null): string | null {
   if (!value) return null;
   const text = value.trim();
 
-  let m = /^([A-Za-z]{3,})\.?\s+(\d{1,2}),?\s+(\d{4})$/.exec(text);
-  if (m) {
-    const mon = MONTHS[m[1].slice(0, 3).toLowerCase()];
-    return mon ? `${mon} ${m[2].padStart(2, "0")} ${m[3]}` : null;
-  }
+  const build = (mon: string | undefined, day: string, year: string) => {
+    if (!mon) return null;
+    const d = Number(day);
+    const y = Number(year);
+    if (!isRealDate(mon, d, y)) return null;
+    return `${mon} ${String(d).padStart(2, "0")} ${y}`;
+  };
 
-  m = /^(\d{1,2})[-/\s]([A-Za-z]{3,})[-/\s](\d{4})$/.exec(text);
+  let m = /^([A-Za-z]{3,})\.?\s+(\d{1,2}),?\s+(\d{4})$/.exec(text);
+  if (m) return build(MONTHS[m[1].slice(0, 3).toLowerCase()], m[2], m[3]);
+
+  // Two-digit years appear on hotel folios: "11-FEB-26".
+  m = /^(\d{1,2})[-/\s]([A-Za-z]{3,})[-/\s](\d{2}|\d{4})$/.exec(text);
   if (m) {
-    const mon = MONTHS[m[2].slice(0, 3).toLowerCase()];
-    return mon ? `${mon} ${m[1].padStart(2, "0")} ${m[3]}` : null;
+    const year = m[3].length === 2 ? `20${m[3]}` : m[3];
+    return build(MONTHS[m[2].slice(0, 3).toLowerCase()], m[1], year);
   }
 
   m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
-  if (m) {
-    const mon = Object.values(MONTHS)[Number(m[2]) - 1];
-    return mon ? `${mon} ${m[3]} ${m[1]}` : null;
-  }
+  if (m) return build(Object.values(MONTHS)[Number(m[2]) - 1], m[3], m[1]);
 
   return null;
 }
