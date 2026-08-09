@@ -1712,3 +1712,73 @@ type-clean project with a broken dev server means the cache, not the code.
 
 **Step 9 — deploy.** GitHub, Vercel, environment variables, and a last check
 that `evals/` never leaves this machine.
+
+
+---
+
+## Session 9a — Redaction, and the first commit
+
+**Date:** July 31, 2026
+**Build step:** 9 of 9, in progress — code is committed locally, nothing pushed yet.
+
+### Done this session
+
+- **Strong passcode set.** Five random words, 39 characters, ~10^24
+  combinations. At a thousand guesses a second that outlasts the universe, which
+  makes the in-memory rate limiter no longer the thing standing between an
+  attacker and the data. Old placeholder verified rejected, new one verified
+  working. Value lives only in `.env.local`, never printed.
+- **Backlog recorded** as build-order items 10–12 in CLAUDE.md, with measured
+  numbers and the first move for each.
+- **Two rounds of redaction**, both before the first commit — git history is
+  permanent, so redacting afterwards would have left the originals recoverable.
+- **First commit made.** 59 files.
+
+### What was redacted, and why it mattered
+
+**Round 1 — merchant data.** `BUILD_LOG.md` had accumulated real merchant names,
+amounts, dates and statement filenames carrying the card identifier, all added
+as worked examples while debugging. Fine in a private repo; not fine in a public
+one. Real merchants were swapped for the invented names already used in
+`verify-blocking.ts`, so the docs and the tests now share one fictional
+vocabulary.
+
+**Round 2 — the employer.** 32 references across public-bound files, including a
+design spec documenting the reverse-engineering of their website's computed
+styles and a parser docstring naming and decoding their statement format. The
+PRD still lists the employer conversation as **open**, and a public repo is a
+bigger step than the team rollout that conversation was meant to precede.
+
+Genericised: "a corporate card statement", "the airline's booking flow". The
+`--wj-*` CSS token prefix went too — an initialism is still a reference.
+
+**Nothing in the engineering story was lost.** The evals, the parser, the bugs
+and every lesson survive intact. None of the value ever depended on naming the
+company or the restaurants.
+
+Verified afterwards: no employer name, merchant name, card identifier or
+employee name anywhere in the working tree **or anywhere in git history**.
+
+### The fixture rename that redaction forced
+
+Redacting statement filenames in the eval scripts broke them, because the files
+on disk still had the old names. Renamed the six real statements to
+`statement-2026-NN.pdf` and updated `sourceStatement` in every ground-truth
+file. All six checks re-run and green afterwards — the redaction cost nothing.
+
+### Still to do
+
+1. **GitHub.** Repo not created. Bilal leaning toward the `gh` CLI route
+   (`brew install gh`, one browser authorisation, then create and push);
+   the alternative is creating it at github.com/new — **Public**, and without a
+   README or .gitignore, since both already exist and would conflict.
+2. **Vercel.** Connect the repo, then set `ANTHROPIC_API_KEY` and `APP_PASSCODE`
+   in Vercel's environment variables — typed by Bilal, never in a file.
+3. **Verify the live URL is actually gated** before it sits unprotected.
+4. **The final BUILD_LOG entry** summarising the whole build, once it's live.
+
+### State on disk
+
+Local git repo on `main`, one commit, no remote. All six checks green:
+`eval` 90/90 · `verify:report` · `verify:layout` · `verify:blocking` ·
+`verify:auth` · `eval:receipts` 25/25.
