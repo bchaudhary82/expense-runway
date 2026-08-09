@@ -34,13 +34,16 @@ export interface ReceiptImage {
 /**
  * Long edge in pixels, and JPEG quality.
  *
- * Tuned by looking at the output, not guessed. At 1400px / 0.82 the Uber
- * receipts came out with the fare amount barely readable — which is the one
- * number a reviewer actually checks. These settings keep a 25-receipt month
- * under ~1 MB against the 4.7 MB of the hand-made original, with the text
- * still crisp.
+ * Tuned by looking at the output, not guessed. At 1400px / quality 82 the
+ * rideshare receipts came out with the fare amount barely readable — which is
+ * the one number a reviewer actually checks.
+ *
+ * Lowered from 2000px/92 to 1600px/85 on August 9, 2026, after a real upload
+ * hit Vercel's 4.5 MB response ceiling. Legibility is re-checked against the
+ * faded thermal receipt (the worst case in the fixtures) whenever these move —
+ * a quality setting has already shipped unreadable receipts once.
  */
-const MAX_EDGE = 2000;
+const MAX_EDGE = 1600;
 /**
  * Small sources get enlarged to this before the model reads them. 1568px is the
  * long edge the vision API works at, so anything under it is leaving detail on
@@ -52,7 +55,7 @@ const MIN_EDGE = 1568;
  * produces a ~1%-quality image. It was shipping unreadable receipts at 6 KB
  * each and only showed up by opening one and looking at it.
  */
-const JPEG_QUALITY = 92;
+const JPEG_QUALITY = 85;
 
 async function canvasLib() {
   return (await import("@napi-rs/canvas")) as unknown as {

@@ -17,6 +17,12 @@ import {
   checkAgainstDeclared,
   formatMoney,
 } from "@/lib/statement/format";
+import {
+  checkUploadSize,
+  formatBytes,
+  looksLikeAFinishedReport,
+  readError,
+} from "@/lib/uploadLimits";
 import { LineItemsTable } from "./LineItemsTable";
 import { Button, Card, IconCircle, StatusTag } from "./ui";
 
@@ -66,6 +72,16 @@ export function UploadStep({
   }
 
   async function readFiles() {
+    // Check the size BEFORE uploading. The server can only reject an oversized
+    // request after it has all been sent, and it does so with a plain-text
+    // error that isn't ours — so the user waits, then gets told something
+    // unhelpful. The browser already knows the total.
+    const size = checkUploadSize(files);
+    if (!size.ok) {
+      setError(size.message);
+      return;
+    }
+
     setBusy(true);
     setError(null);
     try {
@@ -73,14 +89,12 @@ export function UploadStep({
       for (const f of files) body.append("files", f);
 
       const res = await fetch("/api/parse-statement", { method: "POST", body });
-      const data = await res.json();
-
       if (!res.ok) {
-        setError(data.error ?? "Something went wrong reading those files.");
+        setError(await readError(res));
         return;
       }
       onFiles(files);
-      onParsed(data as ParseResponse);
+      onParsed((await res.json()) as ParseResponse);
     } catch {
       setError("Couldn't reach the server. Check your connection and try again.");
     } finally {
@@ -251,7 +265,7 @@ export function UploadStep({
           <div className="flex flex-col justify-center gap-3 lg:w-[240px]">
             <Button
               onClick={readFiles}
-              disabled={files.length === 0 || busy}
+              disabled={files.length === 0 || busy || !checkUploadSize(files).ok}
               className="w-full"
             >
               {busy ? "Reading…" : "Read my files"}
@@ -270,7 +284,14 @@ export function UploadStep({
                 key={`${f.name}:${f.size}`}
                 className="flex items-center gap-3 py-2.5 text-[14px]"
               >
-                <span className="flex-1 truncate text-ink">{f.name}</span>
+                <span className="flex-1 truncate text-ink">
+                  {f.name}
+                  {looksLikeAFinishedReport(f.name) && (
+                    <span className="ml-2 text-[13px] font-semibold text-warn">
+                      — looks like a finished report, not an input
+                    </span>
+                  )}
+                </span>
                 <span className="tabular-nums text-body">
                   {(f.size / 1024).toFixed(0)} KB
                 </span>
@@ -288,6 +309,17 @@ export function UploadStep({
               </li>
             ))}
           </ul>
+        )}
+
+        {files.length > 0 && (
+          <p
+            className={`mt-3 text-[13px] ${
+              checkUploadSize(files).ok ? "text-body" : "font-semibold text-block"
+            }`}
+          >
+            {formatBytes(checkUploadSize(files).totalBytes)} total
+            {!checkUploadSize(files).ok && " — too large to upload"}
+          </p>
         )}
       </Card>
 

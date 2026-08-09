@@ -18,6 +18,7 @@ import type { ReconcileResponse } from "@/app/api/reconcile/route";
 import type { Flag, Resolutions } from "@/lib/receipts/reconcile";
 import { applyResolutions } from "@/lib/receipts/reconcile";
 import { formatMoney } from "@/lib/statement/format";
+import { readError } from "@/lib/uploadLimits";
 import { Button, Card, StatusTag } from "./ui";
 
 const TONE: Record<Flag["kind"], { tone: "warn" | "block"; label: string }> = {
@@ -53,12 +54,11 @@ export function ReconcileStep({
       const body = new FormData();
       for (const f of files) body.append("files", f);
       const res = await fetch("/api/reconcile", { method: "POST", body });
-      const json = await res.json();
       if (!res.ok) {
-        setError(json.error ?? "Couldn't read those receipts.");
+        setError(await readError(res));
         return;
       }
-      onReconciled(json as ReconcileResponse);
+      onReconciled((await res.json()) as ReconcileResponse);
     } catch {
       setError("Couldn't reach the server. Check your connection and try again.");
     } finally {

@@ -19,6 +19,7 @@ import { applyResolutions, type Resolutions } from "@/lib/receipts/reconcile";
 import type { Purposes } from "@/lib/report/reportFormat";
 import { reportFileName } from "@/lib/report/reportFormat";
 import { billedTotal, formatMoney } from "@/lib/statement/format";
+import { checkUploadSize, readError } from "@/lib/uploadLimits";
 import { Button, Card, StatusTag } from "./ui";
 
 export function DownloadStep({
@@ -73,6 +74,13 @@ export function DownloadStep({
   const blocked = !reconciled || outstanding.length > 0;
 
   async function download() {
+    // The files are sent up a second time to build the document, so the same
+    // ceiling applies here.
+    const size = checkUploadSize(files);
+    if (!size.ok) {
+      setError(size.message);
+      return;
+    }
     setBusy(true);
     setError(null);
     setDone(null);
@@ -96,8 +104,7 @@ export function DownloadStep({
 
       const res = await fetch("/api/build-report", { method: "POST", body });
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(data.error ?? "Couldn't build the document. Try again.");
+        setError(await readError(res));
         return;
       }
 
