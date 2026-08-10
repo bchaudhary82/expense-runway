@@ -19,7 +19,7 @@
  * human at 100% zoom, not forensically examined.
  */
 import path from "node:path";
-import { renderPageAsImage } from "unpdf";
+import { getDocumentProxy, renderPageAsImage } from "unpdf";
 
 export interface ReceiptImage {
   /** Where it came from, for showing the user which receipt is which. */
@@ -178,7 +178,24 @@ export async function renderPdfPage(
   scale = 2,
 ): Promise<{ data: Uint8Array; width: number; height: number }> {
   await ensureFonts();
-  const png = await renderPageAsImage(new Uint8Array(pdf), pageNumber, {
+
+  /* disableFontFace makes pdf.js draw every glyph as a VECTOR PATH instead of
+     asking the host for a font.
+
+     This is the fix for a production-only failure. By default pdf.js sets
+     ctx.font to the PDF's own font name — "EAAAAC+Arial-BoldMT" — and lets the
+     canvas find something to draw with. A laptop has hundreds of fonts and
+     substitutes happily. A serverless container has none, so every character
+     silently disappeared: hotel folios rendered as a logo and a grey bar, and
+     the statement screenshot came out blank.
+
+     Bundling a font was tried first and did nothing, because pdf.js asks for
+     the PDF's font names, not for whatever happens to be installed. Drawing
+     paths removes the dependency entirely rather than trying to satisfy it. */
+  const doc = await getDocumentProxy(new Uint8Array(pdf), {
+    disableFontFace: true,
+  });
+  const png = await renderPageAsImage(doc, pageNumber, {
     scale,
     canvasImport: () => import("@napi-rs/canvas") as never,
   });
