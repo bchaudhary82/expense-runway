@@ -30,9 +30,35 @@ export async function POST(request: Request) {
   const canvas = await import("@napi-rs/canvas");
   const { GlobalFonts, createCanvas } = canvas;
 
-  // 1. Does the container have any fonts at all?
+  const before = GlobalFonts.families.length;
+
+  // Did the bundled font actually reach the container, and does registering
+  // it work? This is the thing two failed fixes never established.
+  const { existsSync } = await import("node:fs");
+  const { createRequire } = await import("node:module");
+  const nodePath = await import("node:path");
+  let fontFilePresent = false;
+  let fontDir = "unresolved";
+  try {
+    const require_ = createRequire(import.meta.url);
+    fontDir = nodePath.dirname(
+      require_.resolve("@fontsource/dejavu-sans/package.json"),
+    );
+    fontFilePresent = existsSync(
+      nodePath.join(fontDir, "files/dejavu-sans-latin-400-normal.woff"),
+    );
+  } catch (e) {
+    fontDir = `resolve failed: ${String(e).slice(0, 60)}`;
+  }
+
+  const { ensureFonts } = await import("@/lib/receipts/extract");
+  await ensureFonts();
+
   const fonts = {
-    familyCount: GlobalFonts.families.length,
+    familyCountBefore: before,
+    familyCountAfterRegistering: GlobalFonts.families.length,
+    fontPackageDir: fontDir.replace(/^.*node_modules/, "…/node_modules"),
+    fontFileShipped: fontFilePresent,
     sample: GlobalFonts.families.slice(0, 6).map((f) => f.family),
   };
 

@@ -80,7 +80,7 @@ const JPEG_QUALITY = 85;
  * so the app carries its own font wherever it runs.
  */
 let fontsReady = false;
-async function ensureFonts() {
+export async function ensureFonts() {
   if (fontsReady) return;
   fontsReady = true;
   try {
