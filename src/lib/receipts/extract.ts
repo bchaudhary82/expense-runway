@@ -18,6 +18,7 @@
  * closer to 1.5 MB while staying comfortably legible. Receipts get read by a
  * human at 100% zoom, not forensically examined.
  */
+import path from "node:path";
 import { renderPageAsImage } from "unpdf";
 
 export interface ReceiptImage {
@@ -57,7 +58,51 @@ const MIN_EDGE = 1568;
  */
 const JPEG_QUALITY = 85;
 
+/**
+ * Register a font before anything is rendered.
+ *
+ * THIS IS NOT COSMETIC. pdf.js draws PDF text through the canvas, and the
+ * canvas can only draw text with a font the host actually has. A developer
+ * laptop has hundreds; a serverless container has none.
+ *
+ * The result was a silent, production-only failure: hotel folios — which are
+ * generated PDFs, all text — rendered as a logo and a grey bar with every
+ * character missing. The model dutifully reported it couldn't read them, so
+ * four folio pages arrived with no date and no amount and matched nothing,
+ * while the same files read perfectly on the machine they were tested on. The
+ * statement screenshot at the top of the report was blank for the same reason.
+ *
+ * Scanned receipts were unaffected throughout, because a photograph needs no
+ * fonts — which is exactly why the eval suite never caught it. June's fixtures
+ * are mostly scans.
+ *
+ * DejaVu Sans is bundled as a dependency rather than assumed to be installed,
+ * so the app carries its own font wherever it runs.
+ */
+let fontsReady = false;
+async function ensureFonts() {
+  if (fontsReady) return;
+  fontsReady = true;
+  try {
+    const { GlobalFonts } = await import("@napi-rs/canvas");
+    const { createRequire } = await import("node:module");
+    const require_ = createRequire(import.meta.url);
+    const dir = path.dirname(
+      require_.resolve("@fontsource/dejavu-sans/package.json"),
+    );
+    for (const file of [
+      "files/dejavu-sans-latin-400-normal.woff",
+      "files/dejavu-sans-latin-700-normal.woff",
+    ]) {
+      GlobalFonts.registerFromPath(path.join(dir, file), "DejaVu Sans");
+    }
+  } catch {
+    // A missing font degrades rendering; it shouldn't take the request down.
+  }
+}
+
 async function canvasLib() {
+  await ensureFonts();
   return (await import("@napi-rs/canvas")) as unknown as {
     createCanvas: (w: number, h: number) => {
       getContext: (t: "2d") => {
@@ -132,6 +177,7 @@ export async function renderPdfPage(
   pageNumber: number,
   scale = 2,
 ): Promise<{ data: Uint8Array; width: number; height: number }> {
+  await ensureFonts();
   const png = await renderPageAsImage(new Uint8Array(pdf), pageNumber, {
     scale,
     canvasImport: () => import("@napi-rs/canvas") as never,

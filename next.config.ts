@@ -10,6 +10,18 @@ const nextConfig: NextConfig = {
    * canvas in dynamically, so it goes with it.
    */
   serverExternalPackages: ["@napi-rs/canvas", "unpdf"],
+
+  /**
+   * Keep the bundled font in the deployed function.
+   *
+   * The font files are read at runtime by path, not imported, so a bundler has
+   * no reason to think they're needed and will leave them behind. Without them
+   * the container has no font at all and every PDF renders with its text
+   * missing — which is precisely the production-only bug this fixes.
+   */
+  outputFileTracingIncludes: {
+    "/api/**": ["./node_modules/@fontsource/dejavu-sans/files/*.woff"],
+  },
 };
 
 export default nextConfig;
