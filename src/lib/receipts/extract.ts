@@ -83,21 +83,29 @@ let fontsReady = false;
 export async function ensureFonts() {
   if (fontsReady) return;
   fontsReady = true;
-  try {
-    const { GlobalFonts } = await import("@napi-rs/canvas");
-    const { createRequire } = await import("node:module");
-    const require_ = createRequire(import.meta.url);
-    const dir = path.dirname(
-      require_.resolve("@fontsource/dejavu-sans/package.json"),
-    );
-    for (const file of [
-      "files/dejavu-sans-latin-400-normal.woff",
-      "files/dejavu-sans-latin-700-normal.woff",
-    ]) {
-      GlobalFonts.registerFromPath(path.join(dir, file), "DejaVu Sans");
+  const { GlobalFonts } = await import("@napi-rs/canvas");
+  const dir = path.join(process.cwd(), "assets", "fonts");
+
+  for (const file of ["dejavu-sans-400.woff", "dejavu-sans-700.woff"]) {
+    const full = path.join(dir, file);
+    try {
+      GlobalFonts.registerFromPath(full, "DejaVu Sans");
+    } catch (error) {
+      // Loud, not silent. An earlier version resolved this path with
+      // createRequire(import.meta.url), which throws inside Next's bundled
+      // server, and the failure was swallowed by a bare catch. The font was
+      // never registered, two "fixes" shipped as dead code, and the only
+      // symptom was blank PDFs in production. If this ever fails again it
+      // should be findable in the logs in seconds.
+      console.error(`[fonts] could not register ${full}:`, error);
     }
-  } catch {
-    // A missing font degrades rendering; it shouldn't take the request down.
+  }
+
+  if (GlobalFonts.families.length === 0) {
+    console.error(
+      "[fonts] no fonts available — PDF text will render blank. " +
+        `Looked in ${dir}. Check outputFileTracingIncludes in next.config.ts.`,
+    );
   }
 }
 

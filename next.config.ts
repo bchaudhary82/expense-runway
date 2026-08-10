@@ -14,13 +14,18 @@ const nextConfig: NextConfig = {
   /**
    * Keep the bundled font in the deployed function.
    *
-   * The font files are read at runtime by path, not imported, so a bundler has
-   * no reason to think they're needed and will leave them behind. Without them
-   * the container has no font at all and every PDF renders with its text
-   * missing — which is precisely the production-only bug this fixes.
+   * The font lives in the repository at a fixed path and is read at runtime, so
+   * a bundler has no reason to think it's needed and will leave it behind
+   * unless told. Without it the container has no font at all and every PDF
+   * renders with its text missing.
+   *
+   * It sits in assets/ rather than node_modules because resolving a package
+   * path inside the bundled server does not work: createRequire(import.meta.url)
+   * throws there, which is exactly how the first attempt at this fix came to be
+   * dead code.
    */
   outputFileTracingIncludes: {
-    "/api/**": ["./node_modules/@fontsource/dejavu-sans/files/*.woff"],
+    "/api/**": ["./assets/fonts/*.woff"],
   },
 };
 
