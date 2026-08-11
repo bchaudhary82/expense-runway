@@ -344,16 +344,35 @@ export function reconcile(
           : `That is too large a gap for a tip, so the total was probably ` +
             `misread on a faint scan — worth checking the receipt itself. The ` +
             `report uses the statement amount either way.`),
+      /* Every choice here has to describe what it actually does.
+         "No, different purchase" used to promise "the line goes back to
+         needing a receipt". It didn't: the flag counted as resolved, the
+         report built with nothing under that line, and the receipt was
+         quietly dropped. A button that misdescribes its own effect is worse
+         than a blunt one — so the alternatives are now the same two honest
+         endings a missing receipt gets, and each says the receipt goes
+         unused. */
       choices: [
         {
           id: `${ATTACH}${imageIndex}`,
           label: "Yes, same purchase — attach it",
-          effect: "The statement amount is used in the report, as always.",
+          effect:
+            "The receipt goes under this line. The report uses the statement " +
+            "amount, as it always does.",
         },
         {
-          id: "not-related",
-          label: "No, different purchase",
-          effect: "The line goes back to needing a receipt.",
+          id: "receipt-lost",
+          label: "Not the same — include the line anyway",
+          effect:
+            "The line appears in the report with no receipt beneath it, and " +
+            "this receipt isn't used.",
+        },
+        {
+          id: "exclude",
+          label: "Not the same — leave the line out",
+          effect:
+            "The line is removed from the report and from the total, and " +
+            "this receipt isn't used.",
         },
       ],
     });
