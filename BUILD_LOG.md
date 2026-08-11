@@ -1776,9 +1776,237 @@ file. All six checks re-run and green afterwards — the redaction cost nothing.
    in Vercel's environment variables — typed by Bilal, never in a file.
 3. **Verify the live URL is actually gated** before it sits unprotected.
 4. **The final BUILD_LOG entry** summarising the whole build, once it's live.
+   *Done — see the end of this file.*
 
 ### State on disk
 
 Local git repo on `main`, one commit, no remote. All six checks green:
 `eval` 90/90 · `verify:report` · `verify:layout` · `verify:blocking` ·
 `verify:auth` · `eval:receipts` 25/25.
+
+---
+
+## Session 9b — It went live
+
+GitHub repo created **public**, Vercel connected through the GitHub login, and
+`ANTHROPIC_API_KEY` and `APP_PASSCODE` typed straight into Vercel's environment
+variables — never into a file, never through Claude.
+
+The first deploy reported success and showed no URL, which reads like a failure
+and isn't: Vercel lists the domain on the project page rather than in the build
+output.
+
+**Live at `expense-runway.vercel.app`.** The gate was checked before anything
+else: the app is unreachable without the passcode, `/login` and `/api/login` are
+the only unauthenticated routes, and with no `APP_PASSCODE` set the middleware
+fails closed rather than open.
+
+Steps 1–9 of the build order are done.
+
+## Session 9c — The size ceiling, and a message that sent Bilal to his router
+
+Backlog item 10, done. Vercel caps request **and** response bodies at 4.5 MB
+each. June measured 3.31 MB up and 3.42 MB down — about 30% headroom, and a
+heavier month or a colleague's scanner would have gone over.
+
+`JPEG_QUALITY` 92 → 85 and `MAX_EDGE` 2000 → 1600 roughly halved both. The faded
+thermal receipt was re-checked at the new settings, because quality changes have
+already shipped unreadable receipts once (session 5).
+
+**The worse half of this was the error message.** Going over the limit produced
+"Couldn't reach the server. Check your connection and try again." Bilal went and
+looked at his wifi. Vercel returns a 413 as **plain text**, the code assumed
+JSON, the parse threw, and a catch-all reported it as a network fault.
+
+`readError()` now reads plain-text errors and names the actual cause, and
+`checkUploadSize()` refuses oversized uploads in the browser at 4.2 MB — before
+the wait, not after it.
+
+> A wrong error message costs more than no error message. It doesn't just fail
+> to help; it sends someone to debug the wrong system.
+
+Also in this session: reconciliation flags got stable ids so they can be
+anchor-linked from the blocking message, and impossible dates are now rejected —
+a model returned "Sep 31", which the old normaliser passed through to matching,
+where it silently failed to line up with anything.
+
+## Session 9d — Blank receipts in production, and two fixes that never ran
+
+The app worked locally and produced **blank white pages** where receipts should
+be, in production only.
+
+Attempt 1: ship a font. Attempt 2: draw glyphs as paths instead. Both were
+reasoned from the symptom, both looked right, and **both shipped as dead code.**
+They resolved the font through `createRequire(import.meta.url)`, which throws
+inside Next's bundled server, and a bare `catch` swallowed the error. The fix
+never executed and nothing said so.
+
+Three attempts in, the guessing stopped and a **temporary diagnostic endpoint**
+went out instead — one that reported what the running container could actually
+see. It came back unambiguous:
+
+| Reading | Value |
+|---|---|
+| Registered font families | **0** |
+| Ink drawn on a test canvas | **0** |
+| Font file present on the server | **false** |
+
+The font wasn't failing to load. It was never deployed. A bundler has no reason
+to know a file read at runtime is needed, so it left it behind.
+
+Fixed by putting the font at a fixed path under `assets/` and telling Next to
+keep it: `outputFileTracingIncludes: { "/api/**": ["./assets/fonts/*.woff"] }`.
+Failures now log loudly instead of vanishing. The diagnostic endpoint was
+removed once it had done its job.
+
+> Two of the three attempts weren't wrong — they never ran. Code that can't
+> report its own failure will be debugged as if it did.
+
+Bilal's response is worth recording as a working instruction: *"stopping to
+deploy the diagnostic endpoint instead of going in that circle we did with the
+formatting — we gotta do that again more often."* Measure the running system
+before the second guess, not after the fourth.
+
+## Session 9e — What real data does that fixtures don't
+
+First run against a real month that wasn't June: **February, 17 of 19 matched,
+6 flags.** Every one of the six turned out to be a real behaviour of real
+paperwork, not a bug in the abstract.
+
+**A folio is one receipt.** Hotel folios repeat the total on page 2 — standard
+practice — and the tool was reading that as a duplicate, plus a room charge on
+page 2 as an unexplained extra. Folios announce themselves: every folio page
+carries at least four of *Folio, Invoice, Page Number, Guest, Arrive, Depart*
+in its text layer, and **no** scanned receipt page carries any. Detected
+deterministically, every page after the first dropped.
+
+**A receipt with no readable amount.** On the canteen receipt the amounts column
+had faded off the scan entirely — but the date and the store number were sharp.
+Where a receipt keeps its date and merchant, lands in the window of exactly one
+unmatched line, and nothing else competes for it, it now attaches and is marked
+low confidence.
+
+**A receipt whose amount doesn't match, and has no date.** The breakfast receipt
+lost the leading digit of "1/31/2026" to the scan, and mismatch detection
+required a date. Both fixed: numeric dates parse now, and a mismatch can be
+found on a unique strong merchant match alone. It was never a missing receipt —
+the receipt reads **$29.66**, the statement **$34.11**, and the receipt says
+*"please pay your server"*. A **$4.45** tip added after printing.
+
+One wording fix went with it. Every gap used to be described as a tip. When a
+faint total is misread the gap can be large, and calling that a tip sends
+someone looking for the wrong thing — so gaps over 30% now say the total was
+probably misread, and note that the report uses the statement amount regardless.
+
+**Result: 18 of 19, one flag.** June unchanged at 25/25, `eval` still 90/90.
+The remaining flag is a real judgement call — same purchase, $4.45 apart — and
+belongs to a human.
+
+## Session 9f — A button that lied about what it did
+
+Bilal asked a plain question: with that last flag, can he just force it through?
+Checking the answer turned up a defect no test would have caught.
+
+The mismatch flag offered *"No, different purchase"*, described as **"The line
+goes back to needing a receipt."** It did not. The flag counted as resolved, the
+report built with **nothing** under that line, and the receipt was silently
+dropped. A button that read like *deal with it later* was in fact a final
+decision to file a line bare.
+
+Replaced with the two honest endings a missing receipt already gets — include
+the line without a receipt, or drop it as personal — each stating outright that
+the receipt goes unused. Every one of the three was then run through
+`applyResolutions` and checked against its own description.
+
+> Same family as the connection error in 9c: the interface describing something
+> other than what the code does. Tests assert on behaviour; nothing was
+> asserting that the words matched the behaviour.
+
+Worth recording how it surfaced. Not a test, not a review — a non-technical user
+asking what a button does.
+
+## Session 9g — The filename names the wrong month
+
+February downloaded as *"Expense Report — January 2026.docx"*.
+
+The filename takes the month of the earliest transaction, and statements are
+issued on the **27th**, so anything after the 27th falls into the next month's
+statement. Measured across the fixtures, three of five statements span two
+months: February runs Jan 30 → Feb 12, May runs Apr 30 → May 21, July runs
+Jun 26 → Jul 15. Wrong more often than right.
+
+Not fixed — specified, and left for a session with time in it. The rule is the
+month of the **Statement Date**, which every statement prints on page 1.
+
+One trap found while checking and recorded so it isn't hit twice: searching the
+page text for the label and taking the next date-shaped token reported the same
+date for three different statements. Label and value sit in a header table, and
+flat text order doesn't preserve the pairing. It needs the coordinate-aware word
+layer — the same technique that splits vendor from location.
+
+---
+
+# The build, end to end
+
+Nine steps, roughly two weeks, from an hour of manual work a month to a few
+minutes. **Live and in real use.**
+
+**What it does.** A month of expense files goes in; a Word document in the
+team's exact format comes out, one expense per page, each receipt under its own
+entry, ready to key into JD Edwards.
+
+**The decision that shaped everything.** Evals killed the AI from the main path.
+The corporate card statement parses **deterministically** — 90/90 line items
+exact across five months, at zero cost, and the statement never leaves the
+server. AI reads receipt *images* only, only to decide which line each belongs
+to, and **never writes a number into the report.** That is simultaneously the
+accuracy story and the privacy story, and it came from measurement rather than
+preference.
+
+**The six checks**, five of them free, every one mutation-tested: `eval` 90/90
+plus each statement's self-check · `verify:report` · `verify:layout` ·
+`verify:blocking` · `verify:auth` · `eval:receipts` at about 7¢.
+
+**What the bugs had in common.** Nearly every serious one passed its tests:
+
+- `pageBreakBefore` was valid markup renderers ignore. Every structural
+  assertion passed — the page count even came out right — while the layout was
+  wrong. Four rounds. *Structural checks on a file format do not verify what the
+  format renders.*
+- JPEG quality is 0–100, not 0–1. Shipped 6 KB unreadable receipts. Found by
+  opening an image, not by counting them.
+- A refund prints as `$-12.24`, minus inside the dollar sign. The pattern
+  dropped it silently and the report was over by the refunded amount. Caught by
+  a statement's own self-check.
+- Two font fixes that never executed, because a bare `catch` swallowed the
+  reason.
+- Two interface messages that described something other than what the code did.
+
+The shape is consistent: **the tests asserted on a proxy for the thing that
+mattered.** Every check in the suite now exercises the real artifact — the
+rendered page, the opened image, the statement's own printed total.
+
+**Where the requirements came from.** June built it; February taught it. Folios
+repeating a total, an amounts column faded off a scan, a tip added after
+printing, a billing cycle that straddles two months — none of that was
+imaginable from a spec, and all of it is ordinary. One real month surfaced more
+than any amount of design.
+
+## Still to do
+
+Nothing here blocks use. Ordered as agreed.
+
+1. **Item 11 — rate limiting in a shared store**, ~1 hr. In-memory counting is
+   per serverless instance, so parallel attempts get more than five tries. Do it
+   before wider rollout.
+2. **Item 13 — the filename month**, ~30 min. Fully specified in CLAUDE.md,
+   including the header-table trap.
+3. **Item 14 — "copy down" overwrites purposes already written**, ~15 min, with
+   nothing in the label saying how far it reaches.
+4. **Item 15 — bold the transaction line on each page**, ~15 min. Too faint
+   against the receipt. Needs `verify:layout`, per non-negotiable 0.
+5. **Item 16 — extraction in the browser**, ~half a day. Only if item 10 stops
+   being enough.
+
+Also open, and not a code task: **the employer conversation about corporate card
+data** before the tool goes to the team.
