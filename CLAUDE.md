@@ -177,7 +177,39 @@ polish: items 10 and 11 are things that will break or bite in normal use.
     hammering the API and burning function invocations. Do it before wider
     rollout, not before launch.
 
-12. **Extraction in the browser.** ~half a day. The proper fix for item 10:
+13. **The report filename names the wrong month.** ~30 min, but needs a
+    decision first. `reportFileName()` takes the month of the **earliest
+    transaction**, and a card statement's billing cycle crosses month
+    boundaries: measured across the five fixtures, Feb spans Jan+Feb, May spans
+    Apr+May, Jul spans Jun+Jul — so three of five come out named for the
+    previous month. February 2026 downloads as "Expense Report — January
+    2026.docx".
+    *No convention has been agreed.* The candidates: (a) read the **statement
+    period** off page 1 — the statement already prints it, it's the
+    authoritative answer, and the parser is already on that page for the
+    self-check; (b) the month holding most transactions; (c) the latest
+    month. (a) is the right answer if the period parses reliably, with (b) as
+    the fallback. **Ask before implementing** — this is the team's filing
+    convention, not a technical choice. The name is editable at download
+    either way, so this is friction, not breakage.
+
+14. **"Copy down" overwrites purposes that were already written.** ~15 min.
+    It copies a row's purpose into *every* row below it that isn't excluded,
+    including ones already filled in. That is destructive and unexplained —
+    the button says "↓ copy down" with no indication of how far it reaches.
+    Bilal's words: "I don't fully understand the use of that button." Either
+    scope it to empty rows only, or label what it does and make it undoable.
+    The underlying use case is real: a trip produces a run of expenses sharing
+    one purpose.
+
+15. **Bold the transaction line on each page.** ~15 min. The line lifted from
+    the card statement is the thing a reviewer's eye should land on first, and
+    it currently reads too faint against the receipt image below it. Bold that
+    paragraph only — not the purpose line. Per non-negotiable 0, this needs
+    `npm run verify:layout`, and `verify:report` will need its expectation
+    updated to assert the run is bold.
+
+16. **Extraction in the browser.** ~half a day. The proper fix for item 10:
     unzip the `.docx` and render PDF pages client-side, so only small receipt
     images cross the wire for matching and the finished document is assembled
     locally. Removes the payload ceiling entirely and means receipt files never
