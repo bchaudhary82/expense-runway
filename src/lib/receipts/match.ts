@@ -31,6 +31,8 @@ export interface ReceiptCandidate extends ReceiptReading {
   source: string;
   /** Page within that file, so two receipts from one PDF can be told apart. */
   page?: number;
+  /** Set when this page belongs to a multi-page document, e.g. a hotel folio. */
+  documentGroup?: string;
 }
 
 export interface Match {

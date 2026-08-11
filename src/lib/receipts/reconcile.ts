@@ -141,16 +141,43 @@ function findAmountMismatches(
   const takenImages = new Set<number>();
 
   for (const r of receipts) {
-    if (!freeImages.has(r.imageIndex) || !r.date || !r.amount) continue;
+    // A missing date is allowed here. It is the case this exists for: the scan
+    // that lost its date is exactly the scan whose receipt gets orphaned.
+    if (!freeImages.has(r.imageIndex) || !r.amount) continue;
     if (takenImages.has(r.imageIndex)) continue;
-    const rDay = toDayNumber(r.date);
-    if (rDay === null) continue;
+    const rDay = r.date ? toDayNumber(r.date) : null;
 
     for (const [i, row] of rows.entries()) {
       if (!freeRows.has(i) || takenRows.has(i)) continue;
+
+      /* The date is used when it can be trusted, and set aside when it can't.
+
+         A faded till receipt lost the first digit of "1/31/2026" to the scan,
+         so the month is unreadable and every date-based check fails — leaving a
+         statement line reported as having no receipt while its receipt sits
+         alongside, reported as matching nothing. The two belong together and
+         the tool should say so.
+
+         With the date out of play the merchant has to carry the weight, so it
+         must overlap strongly AND be the only candidate. Nothing is attached
+         automatically: this raises a flag showing both amounts, and a person
+         decides. */
       const rowDay = toDayNumber(row.date);
-      if (rowDay === null || Math.abs(rowDay - rDay) > MAX_DAY_GAP) continue;
-      if (!r.merchant || merchantOverlap(row.vendor, r.merchant) < 0.5) continue;
+      if (rowDay === null) continue;
+      const dateFits = rDay !== null && Math.abs(rowDay - rDay) <= MAX_DAY_GAP;
+      if (!r.merchant) continue;
+      const merchantFits = merchantOverlap(row.vendor, r.merchant) >= 0.5;
+      if (!merchantFits) continue;
+      if (!dateFits) {
+        const otherCandidates = rows.filter(
+          (o, j) =>
+            j !== i &&
+            freeRows.has(j) &&
+            !takenRows.has(j) &&
+            merchantOverlap(o.vendor, r.merchant!) >= 0.5,
+        );
+        if (otherCandidates.length > 0) continue;
+      }
 
       // The amounts must actually DISAGREE. Without this the check swallowed
       // pairs whose amounts were identical — which is not a mismatch, it's an
@@ -202,6 +229,30 @@ export function reconcile(
   rows: StatementRow[],
   receipts: ReceiptCandidate[],
 ): ReconcileState {
+  /* One folio is one receipt.
+     A folio runs to several pages, repeats its total on each, and — depending
+     on the hotel — splits charges across them, so page two might show a room
+     charge on its own. Every page after the first is dropped outright rather
+     than raised as a duplicate or as a receipt matching nothing: it is neither.
+     The page carrying the folio total is page one, which is what matching uses.
+     Detection is deterministic, from markers in the PDF's own text layer. */
+  const foliosSeen = new Set<string>();
+  const collapsed: ReceiptCandidate[] = [];
+  const extraFolioPages: ReceiptCandidate[] = [];
+  for (const r of receipts) {
+    if (!r.documentGroup) {
+      collapsed.push(r);
+      continue;
+    }
+    if (foliosSeen.has(r.documentGroup)) {
+      extraFolioPages.push(r);
+      continue;
+    }
+    foliosSeen.add(r.documentGroup);
+    collapsed.push(r);
+  }
+  receipts = collapsed;
+
   const duplicateOf = findDuplicates(receipts);
   // Duplicates never enter matching — otherwise a copy could claim a line and
   // leave the original looking like an extra receipt.
@@ -221,6 +272,47 @@ export function reconcile(
     ...result.ambiguous.map((a) => a.imageIndex),
   ]);
 
+  /* Rescue receipts whose AMOUNT is unreadable.
+
+     The mirror of the date rescue in match.ts. A faded till receipt can lose
+     its entire amounts column to the scanner while the merchant and date stay
+     perfectly legible — one here reads "WestJet Head Office - Main Cafe,
+     Feb 11 2026" with the total simply gone.
+
+     Allowed only when the evidence leaves no room: the date is within the
+     window of exactly ONE line still needing a receipt, the merchants have
+     something in common, and no other loose receipt is competing for it.
+     Marked low so a person looks. */
+  for (const imageIndex of [...freeImages]) {
+    const r = byImage.get(imageIndex);
+    if (!r || r.amount || !r.date) continue;
+
+    const rDay = toDayNumber(r.date);
+    if (rDay === null) continue;
+
+    const fits = [...freeRows].filter((i) => {
+      const rowDay = toDayNumber(rows[i].date);
+      if (rowDay === null || Math.abs(rowDay - rDay) > MAX_DAY_GAP) return false;
+      return !r.merchant || merchantOverlap(rows[i].vendor, r.merchant) > 0;
+    });
+    if (fits.length !== 1) continue;
+
+    const rivals = [...freeImages].filter((other) => {
+      if (other === imageIndex) return false;
+      const o = byImage.get(other);
+      if (!o?.date) return false;
+      const oDay = toDayNumber(o.date);
+      return oDay !== null && Math.abs(oDay - rDay) <= MAX_DAY_GAP;
+    });
+    if (rivals.length > 0) continue;
+
+    const rowIndex = fits[0];
+    autoAssignments[rowIndex] = imageIndex;
+    freeRows.delete(rowIndex);
+    freeImages.delete(imageIndex);
+  }
+
+
   // Amount mismatches first — they explain a row and a receipt at once, so
   // finding them removes two confusing flags and replaces them with one clear one.
   const mismatches = findAmountMismatches(rows, receipts, freeRows, freeImages);
@@ -229,9 +321,14 @@ export function reconcile(
     freeImages.delete(imageIndex);
     const row = rows[rowIndex];
     const r = byImage.get(imageIndex)!;
-    const diff = Math.abs(
-      amountToNumber(row.billedAmount) - Number(r.amount ?? 0),
-    );
+    const statementAmount = amountToNumber(row.billedAmount);
+    const receiptAmount = Number(r.amount ?? 0);
+    const diff = Math.abs(statementAmount - receiptAmount);
+    // A tip is a small addition. A large gap is far more likely to be a misread
+    // total on a faint scan, and saying "a tip explains it" would be wrong.
+    const looksLikeATip =
+      receiptAmount > 0 && diff / Math.max(statementAmount, receiptAmount) <= 0.3;
+
     flags.push({
       id: `mismatch:${rowIndex}:${imageIndex}`,
       kind: "amount-mismatch",
@@ -239,9 +336,14 @@ export function reconcile(
       imageIndex,
       message:
         `This receipt looks like the same purchase as ${describeRow(row)}, but the ` +
-        `amounts differ by ${formatMoney(diff)} — the receipt says ` +
-        `${formatMoney(r.amount ?? "0")}. A tip added afterwards or a currency ` +
-        `conversion usually explains it.`,
+        `amounts differ by ${formatMoney(diff)} — the receipt reads ` +
+        `${formatMoney(r.amount ?? "0")}. ` +
+        (looksLikeATip
+          ? `A tip added after the receipt printed, or a currency conversion, ` +
+            `usually explains a gap this size.`
+          : `That is too large a gap for a tip, so the total was probably ` +
+            `misread on a faint scan — worth checking the receipt itself. The ` +
+            `report uses the statement amount either way.`),
       choices: [
         {
           id: `${ATTACH}${imageIndex}`,
@@ -358,6 +460,8 @@ export function reconcile(
       ],
     });
   }
+
+  void extraFolioPages; // dropped deliberately — they are pages, not receipts
 
   return { matches: result.matches, flags, autoAssignments };
 }

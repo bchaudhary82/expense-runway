@@ -189,6 +189,23 @@ function normaliseDate(value: string | null): string | null {
   m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
   if (m) return build(Object.values(MONTHS)[Number(m[2]) - 1], m[3], m[1]);
 
+  /* Till receipts print numeric dates: "1/31/2026". Not handling this meant a
+     perfectly legible date was thrown away, the receipt lost its only reliable
+     link to a statement line, and it was reported as matching nothing.
+
+     Month-first is assumed, which is what North American point-of-sale systems
+     print. Where the first number is above 12 it can only be a day, so the
+     order is unambiguous and gets corrected. A wrong guess on a genuinely
+     ambiguous date costs a failed match, never a wrong one: the amount still
+     has to agree to the cent. */
+  m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(text);
+  if (m) {
+    let month = Number(m[1]);
+    let day = Number(m[2]);
+    if (month > 12 && day <= 12) [month, day] = [day, month];
+    return build(ORDER[month - 1], String(day), m[3]);
+  }
+
   return null;
 }
 

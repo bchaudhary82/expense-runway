@@ -26,6 +26,17 @@ export interface ReceiptImage {
   source: string;
   /** 1-based page number for PDFs, image index for .docx. */
   index: number;
+  /**
+   * Set when this page is part of a single multi-page document rather than a
+   * receipt in its own right — a hotel folio, typically.
+   *
+   * Folios run to several pages and repeat the total on each one, and different
+   * hotels split the charges differently: one puts the room charge on page two.
+   * Treating each page as a receipt produced a phantom duplicate and a phantom
+   * "receipt matching nothing" for a hotel that was plainly on the statement.
+   * One folio is one receipt.
+   */
+  documentGroup?: string;
   /** JPEG bytes. */
   data: Uint8Array;
   width: number;
@@ -217,16 +228,47 @@ export async function pdfPageCount(pdf: Uint8Array): Promise<number> {
   return doc.numPages;
 }
 
+/**
+ * Does this PDF's text layer identify it as a hotel folio?
+ *
+ * Measured rather than guessed. Across the real files, folio pages carry
+ * "Folio", "Invoice", "Page Number", "Guest", "Arrive"/"Depart" and "Room" in
+ * their text layer, on every page. Scanned paper receipts carry none of them —
+ * not even one — despite also having a text layer from the scanner's OCR, which
+ * is why "has text" alone was not a usable signal.
+ *
+ * No AI involved: this is reading words that are already in the file.
+ */
+async function looksLikeAFolio(pdf: Uint8Array): Promise<boolean> {
+  try {
+    const { extractWordsByPage } = await import("@/lib/statement/words");
+    const pages = await extractWordsByPage(pdf);
+    if (pages.length < 2) return false;
+    const text = pages[0].map((w) => w.text).join(" ");
+    const markers = ["folio", "invoice", "page number", "guest", "arrive", "depart"];
+    const hits = markers.filter((m) => new RegExp(m, "i").test(text)).length;
+    return hits >= 4;
+  } catch {
+    return false;
+  }
+}
+
 /** Every page of a PDF, one image each. Used for scanned receipts and folios. */
 export async function extractFromPdf(
   pdf: Uint8Array,
   source: string,
 ): Promise<ReceiptImage[]> {
   const pages = await pdfPageCount(pdf);
+  const folio = await looksLikeAFolio(pdf);
   const out: ReceiptImage[] = [];
   for (let page = 1; page <= pages; page++) {
     const img = await renderPdfPage(pdf, page);
-    out.push({ source, index: page, ...img });
+    out.push({
+      source,
+      index: page,
+      ...img,
+      ...(folio ? { documentGroup: source } : {}),
+    });
   }
   return out;
 }

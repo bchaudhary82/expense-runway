@@ -51,18 +51,22 @@ export async function POST(request: Request) {
       i,
       source: img.source,
       page: img.index,
+      documentGroup: img.documentGroup,
       reading: await readReceipt(img.data),
       thumb: await thumbnail(img.data),
     })),
   );
 
-  const receipts: ReconcileReceipt[] = readings.map(({ i, source, page, reading, thumb }) => ({
+  const receipts: ReconcileReceipt[] = readings.map(
+    ({ i, source, page, documentGroup, reading, thumb }) => ({
     ...reading,
     imageIndex: i,
     source,
     page,
+    documentGroup,
     thumb: `data:image/jpeg;base64,${Buffer.from(thumb.data).toString("base64")}`,
-  }));
+    }),
+  );
 
   const candidates: ReceiptCandidate[] = receipts.map((r) => stripThumb(r));
 
