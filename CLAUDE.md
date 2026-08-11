@@ -184,14 +184,28 @@ polish: items 10 and 11 are things that will break or bite in normal use.
     Apr+May, Jul spans Jun+Jul — so three of five come out named for the
     previous month. February 2026 downloads as "Expense Report — January
     2026.docx".
-    *No convention has been agreed.* The candidates: (a) read the **statement
-    period** off page 1 — the statement already prints it, it's the
-    authoritative answer, and the parser is already on that page for the
-    self-check; (b) the month holding most transactions; (c) the latest
-    month. (a) is the right answer if the period parses reliably, with (b) as
-    the fallback. **Ask before implementing** — this is the team's filing
-    convention, not a technical choice. The name is editable at download
-    either way, so this is friction, not breakage.
+    **The convention is settled** (Bilal, Aug 2026): statements are issued on
+    the **27th**, and the report is named for the month of that statement date.
+    Anything transacted after the 27th falls into the next month's statement,
+    which is exactly why the earliest transaction is the wrong thing to read.
+    A Feb 27 statement is the February report even though its first line is
+    dated Jan 30. Confirmed against the fixtures — every statement's
+    transactions begin after the 27th of the prior month (Feb: Jan 30 → Feb 12;
+    May: Apr 30 → May 21; Jul: Jun 26 → Jul 15).
+
+    So: **read `Statement Date` off page 1** and take its month. The field is
+    printed on every statement, so nothing has to be inferred.
+
+    *One trap, already hit.* Searching the page text for the label and taking
+    the next date-shaped token returns garbage — it reported "Feb 27 2026" for
+    three different statements. Label and value live in a header table, and
+    flat text order does not preserve which value sits under which label. Use
+    the coordinate-aware word layer in `words.ts` and match on the value's x
+    position beneath the label, the same way vendor is split from location.
+    Fail closed: if the date can't be read with confidence, fall back to
+    today's naming rather than inventing a month, and say so.
+
+    The name is editable at download, so this is friction, not breakage.
 
 14. **"Copy down" overwrites purposes that were already written.** ~15 min.
     It copies a row's purpose into *every* row below it that isn't excluded,
