@@ -41,11 +41,24 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // An expired session on an API call should say so in a way the page can
-  // handle, rather than returning a login page where JSON was expected.
+  /* An unauthenticated API call should say so in a way the page can handle,
+     rather than returning a login page where JSON was expected.
+
+     Two different situations, two different sentences. This used to say "your
+     session has expired" for both, which is wrong and misleading in the more
+     common one: opening an app URL directly in a browser that has never signed
+     in produces no cookie at all, and being told something expired sends you
+     looking for a session you never had. Bilal hit exactly that. The third
+     message in this project to describe something other than what happened —
+     see the 413 reported as a connection fault, and the reconciliation button
+     that promised to defer a decision it was actually making. */
   if (pathname.startsWith("/api/")) {
     return NextResponse.json(
-      { error: "Your session has expired. Reload the page and enter the passcode again." },
+      {
+        error: token
+          ? "Your session has expired. Reload the page and enter the passcode again."
+          : "You're not signed in. Open the app, enter the passcode, then try again.",
+      },
       { status: 401 },
     );
   }
