@@ -168,13 +168,15 @@ polish: items 10 and 11 are things that will break or bite in normal use.
     is the canary, and quality settings have already shipped unreadable receipts
     once (session 5).
 
-11. ~~**Rate limiting in a shared store.**~~ **CODE DONE Aug 10, 2026 — needs
-    two environment variables in Vercel before it takes effect.** Counts live in
-    Upstash Redis when `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`
-    are both set, and in per-instance memory otherwise, so nothing breaks
-    locally or in the checks. Until Bilal adds those two variables in Vercel,
-    **production is still counting per instance** — the code shipping is not the
-    same as the fix being live.
+11. ~~**Rate limiting in a shared store.**~~ **DONE AND VERIFIED LIVE Aug 10,
+    2026** — confirmed in production via `/api/status`:
+    `sharedRateLimitStore: true`. Counts live in Upstash Redis when
+    `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are both set, and in
+    per-instance memory otherwise, so nothing breaks locally or in the checks.
+    Vercel applies environment variables only to deployments built *after* they
+    are added, so "the variables are set" and "the limiter is shared" are
+    different claims — if a deploy ever loses them the limiter silently reverts
+    to per-instance counting, and `/api/status` is how to tell.
     Uses Redis `INCR` rather than read-modify-write: two simultaneous guesses
     that both read 3 and both write 4 have spent two attempts and recorded one.
     `verify:auth` proves this against a fake Upstash server over real HTTP —
