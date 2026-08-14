@@ -2143,3 +2143,107 @@ found by a person reading a screen, never by a check.
 All six free checks pass and the production build is clean. Remaining: item 17
 (remove "fill below", ~10 min) and item 16 (browser-side extraction, ~half a
 day, only if the upload ceiling starts biting). Neither blocks use.
+
+---
+
+## Session 11 — A way forward, and a fix that got rejected
+
+### The Upload step had no way forward (item 18)
+
+Once files were read, the only route to Reconcile was the stepper at the top —
+which reads as navigation, not as the next thing to do. Bilal: *"there isn't a
+clear direction to go to the reconcile step."*
+
+Checked rather than assumed, and the finding made it easy: **exactly one screen
+was missing it.** Reconcile and Purposes both already took an `onContinue` and
+rendered a Continue button; Upload took no such prop at all. So this closed an
+inconsistency rather than inventing a pattern.
+
+"Continue to receipts" now sits in the parsed branch only, so it cannot appear
+before a statement has been read and cannot lead to an empty Reconcile screen.
+It grants nothing the stepper didn't — including when a statement fails its
+self-check, where the "Doesn't balance" warning above is unchanged and remains
+the louder thing on the page. Tested by Bilal in the live app.
+
+### The override stays, and that is now written down
+
+Asked what the per-row amount override does, and on hearing it, kept it: *"It's
+a great function to have."*
+
+It replaces a statement amount with a typed one, guarded three ways — the figure
+turns amber, a banner names the count, and every override is listed again on the
+download screen before the file is built.
+
+Recorded under a new **"Settled, do not re-open"** heading in CLAUDE.md. Without
+that, a future session reads "hand-typed amounts on a filed accounting document",
+correctly identifies it as risk, and proposes removing it — re-litigating a
+decision already made on good grounds. **A decision is only durable if the
+reasoning survives with it.**
+
+"Fill below" went the other way: left in place for now, marked on hold rather
+than deleted, with its removal case intact underneath.
+
+### A two-hour fix, proposed and rejected in one exchange
+
+Bilal has a colleague's receipts to try — all phone photos, no scans. Would they
+blow the 4.5 MB ceiling?
+
+Yes, enormously. Phone photos run 2–5 MB each, so a month is 30–70 MB against a
+4.2 MB limit. The proposed fix was sound on its face: shrink images in the
+browser before upload. It costs nothing in quality, because the server already
+downsizes to 1600px at quality 85 — the same operation, moved earlier. Fifteen
+photos would drop from ~45 MB to ~2 MB.
+
+**Bilal questioned whether the work was needed at all, and was right.** iPhones
+shoot HEIC by default, browsers cannot decode HEIC, and there is nothing to
+resize. For the exact colleagues it was aimed at, the fix moves them zero
+distance.
+
+That fact was already written in this project's own notes on supported file
+types. It was in the proposal's blast radius and got missed anyway — surfaced by
+someone non-technical asking whether the thing was necessary, not by anyone
+checking the details.
+
+The measurement that settled it: June's entire month — 25 receipts as a scanned
+PDF, a rideshare docx, two folios and the statement — is **~3.3 MB**, inside the
+ceiling. The same receipts photographed would be 50–100 MB. A scan is a clean
+page; a photo is a 12-megapixel picture of a desk.
+
+And the accuracy argument is the stronger one: folio detection, the faded-amount
+rescue and tip detection were all built and measured on scanned PDFs, the path
+carrying 25/25. Photos add shadows, angles and backgrounds to a matcher never
+evaluated on them.
+
+So the answer isn't code, it's the Notes app: new note → camera → Scan
+Documents. One tidy PDF per month instead of 25 loose photos, which is less work
+for the colleague too.
+
+Item 19 is logged **deferred with conditions** rather than dropped — revive it
+only for someone who genuinely cannot scan, whose photos are JPEG rather than
+HEIC.
+
+> Two hours saved by asking "is this necessary" before "is this correct". The
+> same question that retired "fill below" one session earlier. It is the
+> cheapest question in this project and neither time did it come from the
+> engineering side.
+
+### An edit that silently did nothing
+
+A scripted change to CLAUDE.md hit its own assertion and wrote **no file at
+all**, while the commit beside it went through. Item 11 was left still claiming
+production was counting per instance and waiting on environment variables —
+both untrue by then, in the file a future session reads first.
+
+Caught by checking the output rather than trusting the exit, and corrected in
+the next commit. Same shape as the two font fixes that shipped as dead code:
+**work that doesn't happen looks identical to work that did, unless something
+reports otherwise.**
+
+### State
+
+All six free checks pass, production build clean, live and verified. Backlog is
+item 16 (browser-side extraction, only if the ceiling starts biting), item 17
+(on hold) and item 19 (deferred). Nothing blocking.
+
+**Next: colleagues.** The rollout ask is one sentence — scan rather than
+photograph — and everything else is done.
