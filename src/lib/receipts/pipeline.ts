@@ -22,6 +22,8 @@ import {
 export interface PipelineInput {
   statementBytes: Uint8Array;
   rows: StatementRow[];
+  /** The statement's own printed date — names the report. Null if unreadable. */
+  statementDate: string | null;
   images: ReceiptImage[];
   /** Files we couldn't read, reported rather than dropped. */
   unreadable: string[];
@@ -30,6 +32,7 @@ export interface PipelineInput {
 export async function runPipeline(files: File[]): Promise<PipelineInput | { error: string }> {
   let statementBytes: Uint8Array | null = null;
   let rows: StatementRow[] = [];
+  let statementDate: string | null = null;
   const receiptFiles: { name: string; bytes: Uint8Array }[] = [];
 
   for (const file of files) {
@@ -43,6 +46,7 @@ export async function runPipeline(files: File[]): Promise<PipelineInput | { erro
         if (parsed.rows.length > 0) {
           statementBytes = bytes;
           rows = parsed.rows;
+          statementDate = parsed.declared?.statementDate ?? null;
           continue;
         }
       } catch {
@@ -66,5 +70,5 @@ export async function runPipeline(files: File[]): Promise<PipelineInput | { erro
     images.push(...(await extractReceipts(name, bytes)));
   }
 
-  return { statementBytes, rows, images, unreadable };
+  return { statementBytes, rows, statementDate, images, unreadable };
 }

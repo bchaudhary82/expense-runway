@@ -141,13 +141,35 @@ export function reportLines(
   return lines;
 }
 
-/** "Expense Report — June 2026.docx", from the first row's date. */
-export function reportFileName(rows: StatementRow[]): string {
+/**
+ * "Expense Report — June 2026.docx", named for the STATEMENT DATE.
+ *
+ * Not for the first transaction, which is what this used to do and which is
+ * wrong most months. Statements are issued on the 27th, so anything spent after
+ * the 27th appears on the next month's statement: February's runs Jan 30 → Feb
+ * 12 and used to download as "January 2026". Three of the six real statements
+ * straddle two months that way.
+ *
+ * The statement prints its own date and the parser already reads it — the same
+ * value the self-check verifies its transaction count and billed total against,
+ * so by the time it reaches here it has been corroborated twice by the
+ * statement's own arithmetic.
+ *
+ * Do NOT switch this to a text search for the "Statement Date" label. Page 1
+ * carries a summary row for the PREVIOUS statement above this one's, so the
+ * first match is reliably the month before — which is how this looked like a
+ * parsing bug when it was really a second, legitimate row.
+ *
+ * Falls back to the earliest transaction when no statement date is available,
+ * which is the old behaviour: imperfect, but a name in the right ballpark beats
+ * an untitled document, and it is editable at download either way.
+ */
+export function reportFileName(rows: StatementRow[], statementDate?: string | null): string {
   const ordered = sortChronologically(rows);
-  const first = ordered[0];
-  if (!first) return "Expense Report.docx";
+  const basis = statementDate ?? ordered[0]?.date;
+  if (!basis) return "Expense Report.docx";
 
-  const m = /^([A-Za-z]{3}) \d{2} (\d{4})$/.exec(first.date);
+  const m = /^([A-Za-z]{3}) \d{2} (\d{4})$/.exec(basis);
   if (!m) return "Expense Report.docx";
 
   const full: Record<string, string> = {

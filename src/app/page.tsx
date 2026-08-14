@@ -86,6 +86,7 @@ export default function Home() {
         {step === 3 && (
           <DownloadStep
             rows={rows}
+            statementDate={parsed?.declared?.statementDate ?? null}
             files={files}
             reconciled={reconciled}
             resolutions={resolutions}

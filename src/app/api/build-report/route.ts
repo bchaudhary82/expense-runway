@@ -132,7 +132,7 @@ export async function POST(request: Request) {
     headers: {
       "content-type":
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "content-disposition": `attachment; filename="${encodeURIComponent(reportFileName(edits.rows))}"`,
+      "content-disposition": `attachment; filename="${encodeURIComponent(reportFileName(edits.rows, input.statementDate))}"`,
       "x-expenses": String(edits.rows.length),
       "x-with-receipt": String(Object.keys(receiptsByRowIndex).length),
       "x-excluded": String(edits.excludedCount),

@@ -24,6 +24,7 @@ import { Button, Card, StatusTag } from "./ui";
 
 export function DownloadStep({
   rows,
+  statementDate,
   files,
   reconciled,
   resolutions,
@@ -32,6 +33,8 @@ export function DownloadStep({
   overrides,
 }: {
   rows: StatementRow[];
+  /** The statement's own date — what the report is named for. */
+  statementDate: string | null;
   files: File[];
   reconciled: ReconcileResponse | null;
   resolutions: Resolutions;
@@ -112,12 +115,12 @@ export function DownloadStep({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = reportFileName(edits.rows);
+      a.download = reportFileName(edits.rows, statementDate);
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      setDone(reportFileName(edits.rows));
+      setDone(reportFileName(edits.rows, statementDate));
     } catch {
       setError("Couldn't build the document. Try again.");
     } finally {
@@ -202,7 +205,7 @@ export function DownloadStep({
               ? !reconciled
                 ? "Match your receipts on the Reconcile step first."
                 : `${outstanding.length} thing${outstanding.length === 1 ? "" : "s"} still need${outstanding.length === 1 ? "s" : ""} a decision on the Reconcile step.`
-              : reportFileName(edits.rows)}
+              : reportFileName(edits.rows, statementDate)}
           </span>
         </div>
 

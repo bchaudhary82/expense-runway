@@ -177,7 +177,7 @@ polish: items 10 and 11 are things that will break or bite in normal use.
     hammering the API and burning function invocations. Do it before wider
     rollout, not before launch.
 
-13. **The report filename names the wrong month.** ~30 min, but needs a
+13. ~~**The report filename names the wrong month.**~~ **DONE Aug 10, 2026.** Named from `declared.statementDate`, which the parser already read and the self-check already corroborates. `npm run eval` now asserts the filename on all six statements, with the expectation taken from each fixture's own filename so both sides can't drift together. Mutation-tested. Original entry: ~30 min, but needs a
     decision first. `reportFileName()` takes the month of the **earliest
     transaction**, and a card statement's billing cycle crosses month
     boundaries: measured across the five fixtures, Feb spans Jan+Feb, May spans
@@ -196,14 +196,13 @@ polish: items 10 and 11 are things that will break or bite in normal use.
     So: **read `Statement Date` off page 1** and take its month. The field is
     printed on every statement, so nothing has to be inferred.
 
-    *One trap, already hit.* Searching the page text for the label and taking
-    the next date-shaped token returns garbage — it reported "Feb 27 2026" for
-    three different statements. Label and value live in a header table, and
-    flat text order does not preserve which value sits under which label. Use
-    the coordinate-aware word layer in `words.ts` and match on the value's x
-    position beneath the label, the same way vendor is split from location.
-    Fail closed: if the date can't be read with confidence, fall back to
-    today's naming rather than inventing a month, and say so.
+    *The trap, resolved.* Searching page text for the label reported "Feb 27
+    2026" for three different statements — which turned out not to be a parsing
+    fault at all. **Page 1 lists a summary row for the PREVIOUS statement above
+    this one's**, so the first match is legitimately the month before. The
+    parser already sidesteps this: `findDeclaredTotals()` reads "Statement Date:"
+    off the transaction page and then matches the page-1 summary row belonging
+    to that date. Nothing new had to be parsed.
 
     The name is editable at download, so this is friction, not breakage.
 
@@ -222,6 +221,14 @@ polish: items 10 and 11 are things that will break or bite in normal use.
     paragraph only — not the purpose line. Per non-negotiable 0, this needs
     `npm run verify:layout`, and `verify:report` will need its expectation
     updated to assert the run is bold.
+
+17. **Probably remove "fill below" entirely.** ~10 min. Bilal, Aug 10 2026:
+    *"Every transaction we always have is a unique transaction for a unique
+    thing in our team. The reason generally is going to be somewhat different."*
+    The feature was built on an assumption about repeated trip expenses that
+    does not hold for this team, so the button is a control nobody needs sitting
+    next to every row. Confirm against one more real month before deleting —
+    if it is genuinely never used, remove it and its column width with it.
 
 16. **Extraction in the browser.** ~half a day. The proper fix for item 10:
     unzip the `.docx` and render PDF pages client-side, so only small receipt

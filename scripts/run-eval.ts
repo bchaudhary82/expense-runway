@@ -19,6 +19,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { reportFileName } from "../src/lib/report/reportFormat";
 import { parseStatement, type StatementRow } from "../src/lib/statement/parseStatement";
 import { checkAgainstDeclared } from "../src/lib/statement/format";
 
@@ -149,6 +150,28 @@ async function main(): Promise<number> {
     if (!self.ok) failures.push(`${pdf}: self-check — ${self.reason}`);
     for (const s of skipped) {
       failures.push(`${pdf}: unreadable line on page ${s.page} — ${JSON.stringify(s.text)}`);
+    }
+
+    /* The report is named for the statement's own month, not its first
+       transaction. Statements are issued on the 27th, so three of these six
+       straddle two months and used to be named for the wrong one — February
+       downloaded as "January 2026".
+
+       The expectation comes from the FILENAME, `statement-2026-02.pdf`, which
+       is an independent record of which month each file is: derive it from the
+       parsed contents and the test would agree with any bug that changed both
+       sides at once. */
+    const monthFromFilename = /statement-(\d{4})-(\d{2})\.pdf$/.exec(pdf);
+    if (monthFromFilename) {
+      const MONTHS = ["January","February","March","April","May","June","July",
+        "August","September","October","November","December"];
+      const wantName =
+        `Expense Report — ${MONTHS[Number(monthFromFilename[2]) - 1]} ` +
+        `${monthFromFilename[1]}.docx`;
+      const gotName = reportFileName(rows, declared?.statementDate ?? null);
+      if (gotName !== wantName) {
+        failures.push(`${pdf}: names the report "${gotName}", expected "${wantName}"`);
+      }
     }
 
     console.log(
