@@ -247,7 +247,7 @@ polish: items 10 and 11 are things that will break or bite in normal use.
     `npm run verify:layout`, and `verify:report` will need its expectation
     updated to assert the run is bold.
 
-18. **The Upload step has no way forward.** ~10 min. Once files are read, the
+18. ~~**The Upload step has no way forward.**~~ **DONE Aug 10, 2026** — "Continue to receipts", rendered only in the parsed branch so it cannot lead to an empty Reconcile screen. Original entry: Once files are read, the
     only route to Reconcile is clicking the stepper at the top, which reads as
     navigation rather than as the next thing to do. Bilal: *"there isn't a clear
     direction to go to the reconcile step."*

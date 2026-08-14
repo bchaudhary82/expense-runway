@@ -40,11 +40,14 @@ export function UploadStep({
   onParsed,
   onFiles,
   onReset,
+  onContinue,
 }: {
   parsed: ParseResponse | null;
   onParsed: (result: ParseResponse) => void;
   onFiles: (files: File[]) => void;
   onReset: () => void;
+  /** Move on to Reconcile. Only offered once a statement has parsed. */
+  onContinue: () => void;
 }) {
   const [files, setFiles] = useState<File[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -197,7 +200,17 @@ export function UploadStep({
           <LineItemsTable rows={parsed.rows} showPurpose={false} />
         </Card>
 
+        {/* The way forward.
+            This block only renders once a statement has parsed, so the button
+            can never lead to an empty Reconcile screen. Before this existed the
+            only route on was the stepper at the top, which reads as navigation
+            rather than as the next thing to do — Reconcile and Purposes have
+            always ended in a Continue button, and this screen was the one that
+            didn't. It adds no capability the stepper lacked, including when the
+            statement doesn't balance: that warning sits above, unchanged, and
+            is the more visible thing on the screen. */}
         <div className="mt-6 flex flex-wrap items-center gap-4">
+          <Button onClick={onContinue}>Continue to receipts</Button>
           <Button variant="secondary" onClick={startOver}>
             Start over with different files
           </Button>

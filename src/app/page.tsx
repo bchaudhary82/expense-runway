@@ -55,6 +55,7 @@ export default function Home() {
       <main className="mx-auto w-full max-w-[1100px] flex-1 px-6 py-10">
         {step === 0 && (
           <UploadStep
+            onContinue={() => setStep(1)}
             parsed={parsed}
             onParsed={setParsed}
             onFiles={setFiles}
