@@ -270,6 +270,35 @@ polish: items 10 and 11 are things that will break or bite in normal use.
     next to every row. Confirm against one more real month before deleting —
     if it is genuinely never used, remove it and its column width with it.
 
+19. **Resize photographed receipts in the browser — DEFERRED, probably never.**
+    Considered and rejected Aug 10, 2026. Phone photos are 2–5 MB each, so a
+    month of them is 30–70 MB against a 4.2 MB ceiling, and shrinking them
+    before upload would have fixed that at no cost in quality since the server
+    downsizes to 1600px/q85 anyway.
+
+    **It was rejected because it solves the wrong problem.** iPhones shoot HEIC
+    by default, browsers cannot decode HEIC, and there is nothing to resize —
+    so for the colleagues this was aimed at, the work moves them zero distance.
+
+    The answer is scanning, and the evidence is strong. June's entire month —
+    25 receipts as a scanned PDF, a rideshare docx, two folios and the statement
+    — is **~3.3 MB total**, comfortably inside the ceiling. The same receipts as
+    photos would be 50–100 MB. A scan is a clean page; a photo is a 12-megapixel
+    picture of a desk.
+
+    The accuracy argument is the stronger one: folio detection, the faded-amount
+    rescue and tip detection were all built and measured on scanned PDFs, which
+    is the path carrying 25/25. Photos add shadows, angles and backgrounds to a
+    matcher that has never been evaluated on them.
+
+    The ask on colleagues is small — iPhone Notes scans to PDF natively (new
+    note → camera → Scan Documents), producing one tidy file per month instead
+    of 25 loose photos.
+
+    **Revive this only if** someone who genuinely cannot scan needs the tool,
+    AND their photos are JPEG rather than HEIC. Otherwise the fix for photos is
+    not code.
+
 16. **Extraction in the browser.** ~half a day. The proper fix for item 10:
     unzip the `.docx` and render PDF pages client-side, so only small receipt
     images cross the wire for matching and the finished document is assembled
