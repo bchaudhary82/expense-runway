@@ -2010,3 +2010,136 @@ Nothing here blocks use. Ordered as agreed.
 
 Also open, and not a code task: **the employer conversation about corporate card
 data** before the tool goes to the team.
+
+---
+
+## Session 10 — Clearing the post-launch list
+
+Four items off the backlog, in the order Bilal picked: easy things first.
+
+### Bold the transaction line (item 15)
+
+The line lifted from the card statement is what a reviewer checks first, and it
+read too faint above a full-page receipt. Bold on that line only — bolding the
+purpose line too would restore the flatness the change exists to fix.
+
+The check is the part worth keeping. `verify:report` asserts bold sits on
+**exactly** the transaction paragraphs, as a set rather than a count: 25 bold
+paragraphs is the right number and completely wrong if they're the wrong 25.
+Mutation-tested both directions — unbolding the transaction line fails,
+bolding the purpose line as well fails. `verify:layout` re-run: 26 pages, one
+expense each, unchanged.
+
+### "Copy down" (item 14, then item 17)
+
+It copied a row's purpose into every row below it, filled or not, so working
+top-down destroyed anything already typed underneath — silently, no undo. Fixed
+to fill only empty rows, and to say so: the button counts what it would touch
+("↓ fill 4 below") and disables at zero.
+
+Then Bilal, on reading it: *"Every transaction we always have is a unique
+transaction for a unique thing in our team."* The feature rests on an
+assumption about repeated trip expenses that does not hold here, so it is
+logged as item 17 — probably delete it outright.
+
+> Worth keeping as a note on sequencing: the fix was correct and the feature
+> still shouldn't exist. Fifteen minutes, and it hardened `verify:report` on
+> the way, so not wasted — but the question "should this exist" is cheaper
+> asked before "is this right" than after.
+
+### The filename month (item 13)
+
+February downloaded as *"Expense Report — January 2026.docx"*.
+
+**The earlier diagnosis was wrong, and finding out cost nothing because it was
+checked rather than built on.** Searching page text for "Statement Date" had
+reported the same date for three different statements, which looked like a
+table-column parsing fault. It wasn't: page 1 carries a summary row for the
+PREVIOUS statement above the current one, so the first match is legitimately
+the month before.
+
+The value was already in hand. `findDeclaredTotals()` has always read the
+statement's own date off the transaction page, and the self-check already
+corroborates it against that statement's transaction count and billed total —
+so it arrives verified twice by the statement's own arithmetic. The fix was to
+name the report from it. Ten minutes, not thirty, and no new parsing.
+
+`npm run eval` now checks the filename on all six statements, with the
+expectation taken from each fixture's **own filename** rather than its parsed
+contents — derive both sides from one source and a bug moves them together.
+Mutation-tested: the old behaviour fails on exactly the three straddling
+months, naming each.
+
+### Rate limiting in a shared store (item 11)
+
+The limiter counted in memory, so on Vercel five attempts meant five *per
+serverless instance* — parallel requests land on different instances and each
+gets a fresh budget. Not fixable by counting more carefully in the same place.
+
+Counts now live in Upstash Redis when configured and in memory otherwise, so
+local runs and every check behave as before. It uses `INCR` rather than
+read-modify-write: two simultaneous guesses that both read "3" and both write
+"4" have spent two attempts and recorded one — the same miscount relocated.
+
+`verify:auth` exercises the Redis path against a **fake Upstash server over
+real HTTP**, not a stubbed module; a mock of the client would only prove the
+client calls itself as written. It checks the lockout survives clearing local
+memory, that five simultaneous attempts count as five, and that a store outage
+degrades to in-memory counting rather than failing closed — failing closed
+would lock the team out of their own reports to protect a passcode on a tool
+holding a statement nobody else wants.
+
+Mutation-tested. Swapping `INCR` for read-modify-write:
+
+```
+FAIL 5 simultaneous attempts count as 5 — counted 3
+FAIL and the account is locked
+```
+
+Three of five, guesser unlocked. The real bug, on demand.
+
+### Shipped is not live
+
+Vercel applies environment variables only to deployments built *after* they are
+added, so "I added the variables" and "the limiter is shared" are different
+claims. Rather than assume, `/api/status` reports what the running server
+actually sees — booleans only, behind the passcode, no URL or token in the
+response.
+
+A first attempt to verify it from outside was worthless and nearly went
+unnoticed: an unauthenticated request returned 401, which looked like proof the
+endpoint existed. It wasn't. The middleware answers before routing, so a path
+invented on the spot returned exactly the same 401. Checked, discarded, said so.
+
+Confirmed by Bilal in a logged-in browser:
+
+```
+{"sharedRateLimitStore":true,"passcodeConfigured":true,"receiptReadingConfigured":true}
+```
+
+### A third message that described the wrong thing
+
+Asked to load `/api/status`, Bilal got *"Your session has expired."* He had no
+session — the branch fires for any invalid token, including no cookie at all,
+and said "expired" for every case. Being told something expired sends you
+looking for a session you never had.
+
+No cookie now says you're not signed in; a genuinely expired or tampered one
+keeps the old wording. That makes three:
+
+| Said | Was |
+|---|---|
+| check your connection | the 4.5 MB upload limit |
+| the line goes back to needing a receipt | it filed the line with none |
+| your session has expired | you never had one |
+
+The pattern is now written into the code rather than rediscovered a fourth
+time. **The tests assert on what the code does; nothing asserts that the words
+match.** That is the standing weak spot in this project, and all three were
+found by a person reading a screen, never by a check.
+
+### State
+
+All six free checks pass and the production build is clean. Remaining: item 17
+(remove "fill below", ~10 min) and item 16 (browser-side extraction, ~half a
+day, only if the upload ceiling starts biting). Neither blocks use.
