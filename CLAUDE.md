@@ -152,6 +152,16 @@ Do these in order. Don't skip ahead — each step is testable on its own.
 8. **Passcode + rate limiting.** **Done.**
 9. **Deploy to Vercel.**
 
+### Settled, do not re-open
+
+- **The per-row amount override stays.** Reviewed Aug 10, 2026 and kept
+  deliberately. It lets a statement amount be replaced by hand, and it is
+  guarded three ways: the amount turns amber, a banner names the count, and
+  every override is listed again on the download screen before the file is
+  built. Bilal: *"It's a great function to have."* Do not remove it as
+  unnecessary risk — the visibility is the safeguard, and it was a considered
+  call, not an oversight.
+
 ### After launch — known work, in priority order
 
 Agreed July 31, 2026 after measuring the real Vercel limits. Not optional
@@ -237,7 +247,22 @@ polish: items 10 and 11 are things that will break or bite in normal use.
     `npm run verify:layout`, and `verify:report` will need its expectation
     updated to assert the run is bold.
 
-17. **Probably remove "fill below" entirely.** ~10 min. Bilal, Aug 10 2026:
+18. **The Upload step has no way forward.** ~10 min. Once files are read, the
+    only route to Reconcile is clicking the stepper at the top, which reads as
+    navigation rather than as the next thing to do. Bilal: *"there isn't a clear
+    direction to go to the reconcile step."*
+
+    Measured, not assumed: **this affects exactly one screen.** `ReconcileStep`
+    and `PurposesStep` both take an `onContinue` and render a Continue button;
+    `UploadStep` takes no such prop, and its only button is "Read my files". So
+    this is an inconsistency to close, not a pattern to invent — add
+    `onContinue` to `UploadStep`, wire it to `setStep(1)` in `page.tsx`
+    alongside the existing `setStep(2)` and `setStep(3)`, and show it only once
+    a statement has parsed, so it can never lead to an empty Reconcile screen.
+
+17. **Possibly remove "fill below".** ~10 min. **On hold — Bilal chose to leave
+    it in place for now (Aug 10, 2026).** Revisit only if it goes unused.
+    Original reasoning: Bilal, Aug 10 2026:
     *"Every transaction we always have is a unique transaction for a unique
     thing in our team. The reason generally is going to be somewhat different."*
     The feature was built on an assumption about repeated trip expenses that
