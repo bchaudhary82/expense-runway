@@ -38,7 +38,7 @@ export async function POST(request: Request) {
   }
 
   const key = clientKey(request);
-  const limit = checkRateLimit(key);
+  const limit = await checkRateLimit(key);
   if (!limit.allowed) {
     const minutes = Math.ceil(limit.retryAfterSeconds / 60);
     return NextResponse.json(
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
   }
 
   if (!safeEqual(submitted, passcode)) {
-    const after = recordFailure(key);
+    const after = await recordFailure(key);
     // Deliberately vague, but the attempt count is honest — being told you have
     // two tries left is useful to the person who mistyped, and no use at all to
     // someone guessing, who can count their own attempts anyway.
@@ -73,7 +73,7 @@ export async function POST(request: Request) {
     );
   }
 
-  recordSuccess(key);
+  await recordSuccess(key);
 
   const response = NextResponse.json({ ok: true });
   response.cookies.set({

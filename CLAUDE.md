@@ -168,7 +168,20 @@ polish: items 10 and 11 are things that will break or bite in normal use.
     is the canary, and quality settings have already shipped unreadable receipts
     once (session 5).
 
-11. **Rate limiting in a shared store.** ~1 hr. `rateLimit.ts` counts in memory,
+11. ~~**Rate limiting in a shared store.**~~ **CODE DONE Aug 10, 2026 — needs
+    two environment variables in Vercel before it takes effect.** Counts live in
+    Upstash Redis when `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`
+    are both set, and in per-instance memory otherwise, so nothing breaks
+    locally or in the checks. Until Bilal adds those two variables in Vercel,
+    **production is still counting per instance** — the code shipping is not the
+    same as the fix being live.
+    Uses Redis `INCR` rather than read-modify-write: two simultaneous guesses
+    that both read 3 and both write 4 have spent two attempts and recorded one.
+    `verify:auth` proves this against a fake Upstash server over real HTTP —
+    mutating the client to read-modify-write makes 5 parallel attempts count as
+    3 and leaves the account unlocked. A store outage falls back to in-memory
+    counting rather than failing closed, so an Upstash problem can't lock the
+    team out of their own expense reports. Original entry: `rateLimit.ts` counts in memory,
     per serverless instance, so parallel or distributed attempts get more than
     five tries. Swap the Map for Upstash Redis or Vercel KV (free tiers cover
     this volume comfortably); the function signatures don't change.
