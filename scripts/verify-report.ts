@@ -45,6 +45,8 @@ async function readDocx(
   buffer: Buffer,
 ): Promise<{
   paragraphs: string[];
+  /** Indices of paragraphs whose text is bold. */
+  bold: number[];
   images: number;
   pageBreaks: number[];
   /** Rendered size of every embedded image, in inches. */
@@ -58,6 +60,7 @@ async function readDocx(
 
   const paragraphs: string[] = [];
   const pageBreaks: number[] = [];
+  const bold: number[] = [];
   const imageSizes: { paragraph: number; widthIn: number; heightIn: number }[] = [];
   const EMU_PER_INCH = 914400;
   let images = 0;
@@ -73,10 +76,18 @@ async function readDocx(
         heightIn: Number(extent[2]) / EMU_PER_INCH,
       });
     }
+    /* Is this paragraph's text bold?
+       The pattern deliberately requires whitespace or the tag's own close right
+       after <w:b, so it can't match <w:bCs/> — the complex-script bold flag,
+       which Word writes alongside the real one and which does not itself
+       embolden Latin text. An explicit w:val of 0/false/off turns it back off. */
+    const boldTag = /<w:b(?:\s+([^>]*))?\/>/.exec(p);
+    const boldOff = boldTag?.[1] && /w:val="(0|false|off)"/.test(boldTag[1]);
     let text = "";
     for (const t of p.match(/<w:t(?:\s[^>]*)?>[\s\S]*?<\/w:t>/g) ?? []) {
       text += t.replace(/<[^>]+>/g, "");
     }
+    if (text && boldTag && !boldOff) bold.push(i);
     paragraphs.push(
       text
         .replace(/&amp;/g, "&")
@@ -108,6 +119,7 @@ async function readDocx(
   return {
     paragraphs,
     images,
+    bold,
     pageBreaks,
     imageSizes,
     keepNext: (xml.match(/<w:keepNext/g) ?? []).length,
@@ -179,7 +191,7 @@ async function main(): Promise<number> {
   const buffer = await Packer.toBuffer(
     buildReportDocument(rows, {}, { statement, receiptsByRowIndex }),
   );
-  const { paragraphs: got, images, pageBreaks, imageSizes, keepNext, page } =
+  const { paragraphs: got, images, bold, pageBreaks, imageSizes, keepNext, page } =
     await readDocx(Buffer.from(buffer));
   const want = expectedLines(gt.rows);
 
@@ -252,6 +264,26 @@ async function main(): Promise<number> {
       `only ${keepNext} paragraphs carry keepNext — expected ${rows.length * 2} ` +
         `(the transaction and purpose line of every entry), so an entry can still ` +
         `be split from its receipt`,
+    );
+  }
+
+  /* The transaction line is bold and NOTHING ELSE IS.
+     Checked as an exact set rather than a count, because the failure worth
+     catching is emphasis landing on the wrong paragraph — a bold purpose line,
+     or the whole document bold, both of which a count would wave through while
+     destroying the contrast this exists to create. Transaction lines sit at
+     paragraphs 1, 4, 7 …; purpose lines at 2, 5, 8 …; images at 0, 3, 6 …. */
+  const wantBold = rows.map((_, i) => 1 + i * 3);
+  if (bold.join(",") !== wantBold.join(",")) {
+    const unexpected = bold.filter((i) => !wantBold.includes(i));
+    const missing = wantBold.filter((i) => !bold.includes(i));
+    failures.push(
+      `bold is on paragraphs [${bold.slice(0, 8).join(", ")}…] but should be on ` +
+        `exactly the transaction lines [${wantBold.slice(0, 8).join(", ")}…]` +
+        (missing.length ? ` — ${missing.length} transaction line(s) not bold` : "") +
+        (unexpected.length
+          ? ` — ${unexpected.length} other paragraph(s) bold, including ${unexpected[0]}`
+          : ""),
     );
   }
 

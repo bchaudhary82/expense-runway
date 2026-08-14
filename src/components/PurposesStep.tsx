@@ -59,14 +59,26 @@ export function PurposesStep({
   const kept = rows.filter((_, i) => !gone.has(i));
   const filled = rows.filter((_, i) => !gone.has(i) && purposes[i]?.trim()).length;
 
-  /** Copy this row's purpose into every row below it that's still included. */
-  function copyDown(fromIndex: number) {
+  /* Which rows below this one would a fill actually touch?
+     Only the EMPTY ones. This used to overwrite every row below, filled or not,
+     so working top-down and copying a purpose destroyed anything already typed
+     underneath — silently, with no undo. The button also said "copy down"
+     without saying how far it reached, which is how it came to be described as
+     not fully understood. It now names its own scope and refuses when there is
+     nothing to fill. */
+  function emptyBelow(fromIndex: number): number[] {
+    const out: number[] = [];
+    for (let i = fromIndex + 1; i < rows.length; i++) {
+      if (!gone.has(i) && !purposes[i]?.trim()) out.push(i);
+    }
+    return out;
+  }
+
+  function fillEmptyBelow(fromIndex: number) {
     const value = purposes[fromIndex]?.trim();
     if (!value) return;
     const next = { ...purposes };
-    for (let i = fromIndex + 1; i < rows.length; i++) {
-      if (!gone.has(i)) next[i] = value;
-    }
+    for (const i of emptyBelow(fromIndex)) next[i] = value;
     onPurposes(next);
   }
 
@@ -192,15 +204,26 @@ export function PurposesStep({
                           placeholder={EMPTY_PURPOSE}
                           className="w-full min-w-[220px] rounded-[4px] border border-line bg-surface px-3 py-2 text-[14px] placeholder:text-body disabled:bg-canvas"
                         />
-                        <button
-                          type="button"
-                          onClick={() => copyDown(i)}
-                          disabled={isGone || !purposes[i]?.trim()}
-                          title="Copy this purpose into every line below"
-                          className="shrink-0 rounded-[4px] border border-line px-2 py-2 text-[13px] font-semibold text-teal disabled:text-body disabled:opacity-50"
-                        >
-                          ↓ copy down
-                        </button>
+                        {(() => {
+                          const targets = purposes[i]?.trim() ? emptyBelow(i) : [];
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => fillEmptyBelow(i)}
+                              disabled={isGone || targets.length === 0}
+                              title={
+                                targets.length
+                                  ? `Put this purpose on the ${targets.length} line${
+                                      targets.length === 1 ? "" : "s"
+                                    } below that are still empty. Anything you've already written is left alone.`
+                                  : "Nothing below this line is empty"
+                              }
+                              className="shrink-0 rounded-[4px] border border-line px-2 py-2 text-[13px] font-semibold whitespace-nowrap text-teal disabled:text-body disabled:opacity-50"
+                            >
+                              ↓ fill {targets.length || ""} below
+                            </button>
+                          );
+                        })()}
                       </div>
                     </td>
 

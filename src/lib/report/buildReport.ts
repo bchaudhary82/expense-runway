@@ -120,7 +120,11 @@ export function buildReportDocument(
       new Paragraph({
         keepNext: true,
         keepLines: true,
-        children: [new TextRun(transactionLine(row))],
+        // Bold, because this is the line a reviewer checks against the card
+        // statement and it was reading too faint above a full-page receipt
+        // image. The purpose line below stays regular — bolding both would
+        // restore the flatness this is meant to fix.
+        children: [new TextRun({ text: transactionLine(row), bold: true })],
       }),
     );
     children.push(

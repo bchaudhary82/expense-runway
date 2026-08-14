@@ -207,7 +207,7 @@ polish: items 10 and 11 are things that will break or bite in normal use.
 
     The name is editable at download, so this is friction, not breakage.
 
-14. **"Copy down" overwrites purposes that were already written.** ~15 min.
+14. ~~**"Copy down" overwrites purposes that were already written."**~~ **DONE Aug 10, 2026.** It now fills only the empty lines below and names its own scope — the button reads "↓ fill N below" and disables when N is 0. Original entry: ~15 min.
     It copies a row's purpose into *every* row below it that isn't excluded,
     including ones already filled in. That is destructive and unexplained —
     the button says "↓ copy down" with no indication of how far it reaches.
@@ -216,7 +216,7 @@ polish: items 10 and 11 are things that will break or bite in normal use.
     The underlying use case is real: a trip produces a run of expenses sharing
     one purpose.
 
-15. **Bold the transaction line on each page.** ~15 min. The line lifted from
+15. ~~**Bold the transaction line on each page.**~~ **DONE Aug 10, 2026.** Bold on the transaction line only; `verify:report` now asserts bold sits on exactly paragraphs 1, 4, 7 … as an exact set, so emphasis landing on the wrong paragraph fails. Mutation-tested both ways. Original entry: ~15 min. The line lifted from
     the card statement is the thing a reviewer's eye should land on first, and
     it currently reads too faint against the receipt image below it. Bold that
     paragraph only — not the purpose line. Per non-negotiable 0, this needs
