@@ -95,6 +95,27 @@ export async function POST(request: Request) {
     );
   }
 
+  /* The same receipt under two expenses builds a report that looks finished
+     and is wrong. The screen stops this happening; this stops it being possible
+     at all, including for a request that never went through the screen. */
+  if (applied.conflicts.length > 0) {
+    return NextResponse.json(
+      {
+        error:
+          `The same receipt is attached to more than one statement line. ` +
+          `Go back to Reconcile and give each line its own receipt.`,
+        outstanding: applied.conflicts.map(
+          (c) =>
+            `One receipt is attached to ${c.rowIndexes.length} lines: ` +
+            c.rowIndexes
+              .map((i) => `${input.rows[i]?.vendor ?? "a line"} on ${input.rows[i]?.date ?? "an unknown date"}`)
+              .join(", "),
+        ),
+      },
+      { status: 409 },
+    );
+  }
+
   /* Deletions and overrides, applied through one tested function.
 
      Removing a row shifts every index after it, and receipts and purposes are

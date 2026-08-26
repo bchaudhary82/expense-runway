@@ -15,10 +15,15 @@
  */
 import { useState } from "react";
 import type { ReconcileResponse } from "@/app/api/reconcile/route";
-import type { Flag, Resolutions } from "@/lib/receipts/reconcile";
-import { applyResolutions } from "@/lib/receipts/reconcile";
+import type { Flag, FlagChoice, Resolutions } from "@/lib/receipts/reconcile";
+import { applyResolutions, claimsExcluding } from "@/lib/receipts/reconcile";
+import type { StatementRow } from "@/lib/statement/parseStatement";
 import { formatMoney } from "@/lib/statement/format";
-import { readError } from "@/lib/uploadLimits";
+import {
+  describeTransportFailure,
+  readError,
+  timeoutSignal,
+} from "@/lib/uploadLimits";
 import { Button, Card, StatusTag } from "./ui";
 
 const TONE: Record<Flag["kind"], { tone: "warn" | "block"; label: string }> = {
@@ -28,6 +33,46 @@ const TONE: Record<Flag["kind"], { tone: "warn" | "block"; label: string }> = {
   duplicate: { tone: "warn", label: "Same receipt twice" },
   "amount-mismatch": { tone: "warn", label: "Amounts don't match" },
 };
+
+/**
+ * Why a choice can't be taken — or null when it can.
+ *
+ * Every spare receipt is offered inside every "receipt missing" card at once,
+ * because the flag list is built once on the server and never re-derived as
+ * decisions come in. That is survivable as long as the same receipt cannot end
+ * up under two expenses, which until now it could: two lines could each claim
+ * it, generation embedded it under both, and the report came out looking
+ * deliberate. Offering a receipt that is already spoken for is the moment to
+ * stop it, since that is where a person would otherwise make the mistake.
+ */
+function blockedReason(
+  flag: Flag,
+  choice: FlagChoice,
+  claimed: Map<number, number>,
+  rows: StatementRow[],
+): string | null {
+  let imageIndex: number | undefined;
+  let rowIndex: number | undefined;
+
+  if (choice.id.startsWith("attach:") && flag.rowIndex !== undefined) {
+    imageIndex = Number(choice.id.slice("attach:".length));
+    rowIndex = flag.rowIndex;
+  } else if (choice.id.startsWith("row:") && flag.imageIndex !== undefined) {
+    imageIndex = flag.imageIndex;
+    rowIndex = Number(choice.id.slice("row:".length));
+  }
+  // Everything else — "receipt lost", "set aside", "remove this line" — takes
+  // no receipt and can never collide.
+  if (imageIndex === undefined || rowIndex === undefined) return null;
+
+  const holder = claimed.get(imageIndex);
+  if (holder === undefined || holder === rowIndex) return null;
+
+  const row = rows[holder];
+  return row
+    ? `Already attached to ${row.vendor} on ${row.date}`
+    : "Already attached to another line";
+}
 
 export function ReconcileStep({
   files,
@@ -53,14 +98,18 @@ export function ReconcileStep({
     try {
       const body = new FormData();
       for (const f of files) body.append("files", f);
-      const res = await fetch("/api/reconcile", { method: "POST", body });
+      const res = await fetch("/api/reconcile", {
+        method: "POST",
+        body,
+        signal: timeoutSignal(),
+      });
       if (!res.ok) {
         setError(await readError(res));
         return;
       }
       onReconciled((await res.json()) as ReconcileResponse);
-    } catch {
-      setError("Couldn't reach the server. Check your connection and try again.");
+    } catch (failure) {
+      setError(describeTransportFailure(failure));
     } finally {
       setBusy(false);
     }
@@ -159,6 +208,7 @@ export function ReconcileStep({
           flag.imageIndex !== undefined
             ? data.receipts.find((r) => r.imageIndex === flag.imageIndex)
             : undefined;
+        const claimed = claimsExcluding(data.state, resolutions, flag.id);
 
         return (
           <Card
@@ -210,15 +260,26 @@ export function ReconcileStep({
                         choice.imageIndex !== undefined
                           ? data.receipts.find((r) => r.imageIndex === choice.imageIndex)
                           : undefined;
+                      const blocked = blockedReason(
+                        flag,
+                        choice,
+                        claimed,
+                        data.rows,
+                      );
                       return (
                         <button
                           key={choice.id}
                           type="button"
+                          disabled={blocked !== null}
                           onClick={() =>
                             onResolve({ ...resolutions, [flag.id]: choice.id })
                           }
-                          title={choice.effect}
-                          className="flex items-center gap-3 rounded-[4px] border border-teal px-3 py-2 text-left text-[14px] font-semibold text-teal hover:bg-canvas"
+                          title={blocked ?? choice.effect}
+                          className={
+                            blocked
+                              ? "flex cursor-not-allowed items-center gap-3 rounded-[4px] border border-line px-3 py-2 text-left text-[14px] font-semibold text-body opacity-70"
+                              : "flex items-center gap-3 rounded-[4px] border border-teal px-3 py-2 text-left text-[14px] font-semibold text-teal hover:bg-canvas"
+                          }
                         >
                           {preview && (
                             // eslint-disable-next-line @next/next/no-img-element
@@ -228,7 +289,14 @@ export function ReconcileStep({
                               className="h-14 w-11 shrink-0 rounded-[2px] border border-line bg-surface object-contain"
                             />
                           )}
-                          <span>{choice.label}</span>
+                          <span>
+                            {choice.label}
+                            {blocked && (
+                              <span className="mt-0.5 block text-[13px] font-normal">
+                                {blocked}
+                              </span>
+                            )}
+                          </span>
                         </button>
                       );
                     })}

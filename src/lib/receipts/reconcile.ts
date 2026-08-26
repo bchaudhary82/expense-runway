@@ -76,6 +76,21 @@ export interface ReconcileState {
 const ATTACH = "attach:";
 
 /**
+ * A refund, a reversal, or a corrected charge.
+ *
+ * These have no receipt to find. Raising a "receipt missing" block against one
+ * demands something that cannot honestly be produced, and the only ways out on
+ * offer — "receipt lost" or "personal charge" — both describe the line as
+ * something it isn't. The line still appears in the report and still counts in
+ * the total; it simply isn't asked for a receipt.
+ */
+function isCreditRow(row: StatementRow): boolean {
+  return (
+    amountToNumber(row.billedAmount) < 0 || amountToNumber(row.expenseAmount) < 0
+  );
+}
+
+/**
  * Receipts that are the same receipt supplied twice — e.g. an Uber trip that
  * appears both in the .docx summary and as a separate screenshot. Same merchant,
  * same amount, same day. The first is kept; the rest are flagged for removal.
@@ -369,7 +384,7 @@ export function reconcile(
         },
         {
           id: "exclude",
-          label: "Not the same — leave the line out",
+          label: "Not the same — remove this line from the report",
           effect:
             "The line is removed from the report and from the total, and " +
             "this receipt isn't used.",
@@ -426,6 +441,7 @@ export function reconcile(
 
   for (const rowIndex of freeRows) {
     const row = rows[rowIndex];
+    if (isCreditRow(row)) continue;
     const spare = [...freeImages].filter(
       (i) => !mismatches.some((m) => m.imageIndex === i),
     );
@@ -451,7 +467,11 @@ export function reconcile(
         },
         {
           id: "exclude",
-          label: "Personal charge — leave it out",
+          /* "Personal charge — leave it out" sat one card away from the extra
+             receipt's "Leave it out", which does nothing at all. Two buttons a
+             few words apart, one of which silently drops a line and its money
+             from the report. Say which thing leaves. */
+          label: "Personal charge — remove this line from the report",
           effect: "The line is removed from the report and from the total.",
         },
       ],
@@ -473,8 +493,13 @@ export function reconcile(
       choices: [
         {
           id: "ignore",
-          label: "Leave it out",
-          effect: "The receipt isn't used. Nothing changes on the statement side.",
+          /* Renamed away from "Leave it out" — see the note on the missing
+             receipt's exclude choice. This one removes NOTHING: it files the
+             receipt away and leaves the statement untouched. */
+          label: "Set this receipt aside",
+          effect:
+            "The receipt isn't attached to any line. No line is added to or " +
+            "removed from the report.",
         },
       ],
     });
@@ -492,6 +517,27 @@ export interface AppliedResolutions {
   excludedRows: number[];
   /** Flags still needing a decision. Report generation is blocked while non-empty. */
   outstanding: Flag[];
+  /**
+   * One receipt claimed by more than one statement line. Blocks generation.
+   *
+   * The flag list is built ONCE and never re-derived, so every spare receipt is
+   * offered inside every "receipt missing" card at the same time, and an
+   * ambiguous receipt is additionally offered its own card. Three spare
+   * receipts against three receipt-less lines put the same three buttons in
+   * three places, and nothing in the model stopped the same receipt being
+   * attached to two different lines: `assignments` is rowIndex -> imageIndex,
+   * so two rows can hold the same image and generation embeds it under both.
+   *
+   * That is the worst failure this tool has, because it is silent. The report
+   * builds, the totals add up, and one receipt sits under two expenses looking
+   * entirely deliberate — including, on a real July statement, under a charge
+   * and under the refund that reversed it.
+   *
+   * The screen prevents the conflict by refusing to offer a receipt that is
+   * already spoken for. This is the backstop, because a disabled button is a
+   * courtesy and not a control.
+   */
+  conflicts: { imageIndex: number; rowIndexes: number[] }[];
 }
 
 /**
@@ -511,10 +557,7 @@ export function applyResolutions(
 
   for (const flag of state.flags) {
     const choice = resolutions[flag.id];
-    if (!choice) {
-      outstanding.push(flag);
-      continue;
-    }
+    if (!choice) continue;
 
     if (choice.startsWith(ATTACH) && flag.rowIndex !== undefined) {
       assignments[flag.rowIndex] = Number(choice.slice(ATTACH.length));
@@ -527,7 +570,69 @@ export function applyResolutions(
     // need no assignment — they resolve the flag by accepting the situation.
   }
 
-  return { assignments, excludedRows, outstanding };
+  /* Outstanding is worked out AFTER every assignment is known, because one
+     card's answer can settle another card's question.
+
+     "This receipt matches no line on your statement" and "this receipt fits two
+     lines equally well" are both asking where a receipt goes. Attach that
+     receipt to a line from a "receipt missing" card and both have been answered
+     — but the cards stayed on screen still asking, and the only button left on
+     the extra-receipt card read "the receipt isn't used" while the receipt was,
+     by then, plainly used. Bilal hit exactly this with an Uber receipt on a
+     July statement and asked, reasonably, which one the report would believe.
+
+     Answering it here rather than on screen keeps the server's refusal and the
+     Continue button working from the same rule. A flag whose subject has been
+     dealt with elsewhere is not outstanding. */
+  const assignedImages = new Set(Object.values(assignments));
+  for (const flag of state.flags) {
+    if (resolutions[flag.id]) continue;
+    const settledElsewhere =
+      (flag.kind === "extra-receipt" || flag.kind === "ambiguous") &&
+      flag.imageIndex !== undefined &&
+      assignedImages.has(flag.imageIndex);
+    if (!settledElsewhere) outstanding.push(flag);
+  }
+
+  /* Invert the assignments: any receipt reached from two rows is a conflict. */
+  const rowsByImage = new Map<number, number[]>();
+  for (const [rowText, imageIndex] of Object.entries(assignments)) {
+    const list = rowsByImage.get(imageIndex) ?? [];
+    list.push(Number(rowText));
+    rowsByImage.set(imageIndex, list);
+  }
+  const conflicts = [...rowsByImage.entries()]
+    .filter(([, rowIndexes]) => rowIndexes.length > 1)
+    .map(([imageIndex, rowIndexes]) => ({ imageIndex, rowIndexes }));
+
+  return { assignments, excludedRows, outstanding, conflicts };
+}
+
+/**
+ * Which receipts are already spoken for, ignoring one card's own answer.
+ *
+ * The screen uses this to grey out a receipt that another line has already
+ * claimed. The card's own resolution has to be excluded or every answered card
+ * would report itself as a conflict and disable the choice it is displaying.
+ *
+ * Returns imageIndex -> the rowIndex holding it. Auto-matched receipts are
+ * included, since a receipt the matcher placed on its own is just as spoken for
+ * as one a person placed by hand.
+ */
+export function claimsExcluding(
+  state: ReconcileState,
+  resolutions: Resolutions,
+  flagId: string,
+): Map<number, number> {
+  const others = { ...resolutions };
+  delete others[flagId];
+  const { assignments } = applyResolutions(state, others);
+
+  const claimed = new Map<number, number>();
+  for (const [rowText, imageIndex] of Object.entries(assignments)) {
+    claimed.set(imageIndex, Number(rowText));
+  }
+  return claimed;
 }
 
 /**
