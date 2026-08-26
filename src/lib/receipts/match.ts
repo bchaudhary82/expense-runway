@@ -124,6 +124,25 @@ function scorePair(row: StatementRow, receipt: ReceiptCandidate): number | null 
 
   let score = 100 + (MAX_DAY_GAP - gap) * 10;
   if (receipt.merchant) score += merchantOverlap(row.vendor, receipt.merchant) * 25;
+
+  /* A refund and the charge it reverses carry the SAME amount with opposite
+     signs, and the comparison above is deliberately sign-blind so a credit note
+     can still find its line.
+
+     The side effect turned up on a real July statement: one GROCERY CO
+     receipt fitted its charge and the refund reversing it equally well, so
+     the matcher refused to choose and raised an ambiguity with only one
+     sensible answer — twice, once per receipt page.
+
+     A receipt for a purchase belongs to the purchase. Disagreeing signs stay
+     matchable, so a credit line whose only candidate is this receipt can still
+     claim it, but they lose every tie to a line whose sign agrees. The penalty
+     is larger than the date and merchant bonuses combined, so agreement always
+     wins outright rather than merely nudging the score. */
+  const rowIsCredit = billedCents < 0 || expenseCents < 0;
+  const receiptIsCredit = receiptCents < 0;
+  if (rowIsCredit !== receiptIsCredit) score -= 50;
+
   return score;
 }
 
