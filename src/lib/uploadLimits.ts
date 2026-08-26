@@ -80,6 +80,8 @@ export interface ReadCheck {
   ok: boolean;
   /** Names of the files whose contents could not be read. */
   unreadable: string[];
+  /** The same files as objects, so a caller can mark them in a list exactly. */
+  unreadableFiles: File[];
   /** Plain-language problem statement, or null when every file is here. */
   message: string | null;
 }
@@ -121,29 +123,44 @@ async function readableWithin(file: File, ms: number): Promise<boolean> {
  * comparing a folder against a list. The size check already sets this
  * precedent by naming the biggest files.
  */
-export async function checkFilesReadable(files: File[]): Promise<ReadCheck> {
+export async function checkFilesReadable(
+  files: File[],
+  /**
+   * Where in the flow this ran. The diagnosis is identical; the remedy is not.
+   * At the Upload step a person adds the files again and loses nothing. Later
+   * on they lose the reconciliation work, and a message that glosses over that
+   * is the same kind of lie as the ones this file already exists to correct.
+   */
+  stage: "upload" | "midflow" = "upload",
+): Promise<ReadCheck> {
   const checked = await Promise.all(
     files.map(async (file) => ({
-      name: file.name,
+      file,
       ok: await readableWithin(file, FIRST_BYTE_TIMEOUT_MS),
     })),
   );
 
-  const unreadable = checked.filter((c) => !c.ok).map((c) => c.name);
-  if (unreadable.length === 0) {
-    return { ok: true, unreadable: [], message: null };
+  const unreadableFiles = checked.filter((c) => !c.ok).map((c) => c.file);
+  if (unreadableFiles.length === 0) {
+    return { ok: true, unreadable: [], unreadableFiles: [], message: null };
   }
 
+  const unreadable = unreadableFiles.map((f) => f.name);
   const list = unreadable.map((n) => `"${n}"`).join(", ");
   return {
     ok: false,
     unreadable,
+    unreadableFiles,
     message:
       `${unreadable.length === 1 ? "1 file isn't" : `${unreadable.length} files aren't`} ` +
       `on this computer yet: ${list}. Files kept in OneDrive or SharePoint show ` +
       `their name and size while the contents are still in the cloud, so there ` +
-      `is nothing to send. Open the folder, wait for the solid green check ` +
-      `beside each one — not the cloud outline — then add them again.`,
+      `is nothing to send. Open the folder and wait for the solid green check ` +
+      `beside each one — not the cloud outline.` +
+      (stage === "upload"
+        ? ` Then add them again.`
+        : ` You will then have to go back to Upload and add your files again, ` +
+          `which starts this report over.`),
   };
 }
 

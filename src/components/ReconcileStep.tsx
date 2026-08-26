@@ -20,6 +20,7 @@ import { applyResolutions, claimsExcluding } from "@/lib/receipts/reconcile";
 import type { StatementRow } from "@/lib/statement/parseStatement";
 import { formatMoney } from "@/lib/statement/format";
 import {
+  checkFilesReadable,
   describeTransportFailure,
   readError,
   timeoutSignal,
@@ -96,6 +97,14 @@ export function ReconcileStep({
     setBusy(true);
     setError(null);
     try {
+      /* A file can go back to the cloud between steps, and finding out from a
+         failed upload gives no clue which file or why. */
+      const readable = await checkFilesReadable(files, "midflow");
+      if (!readable.ok) {
+        setError(readable.message);
+        return;
+      }
+
       const body = new FormData();
       for (const f of files) body.append("files", f);
       const res = await fetch("/api/reconcile", {

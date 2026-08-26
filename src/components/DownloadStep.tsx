@@ -20,6 +20,7 @@ import type { Purposes } from "@/lib/report/reportFormat";
 import { reportFileName } from "@/lib/report/reportFormat";
 import { billedTotal, formatMoney } from "@/lib/statement/format";
 import {
+  checkFilesReadable,
   checkUploadSize,
   describeTransportFailure,
   readError,
@@ -93,6 +94,16 @@ export function DownloadStep({
     setError(null);
     setDone(null);
     try {
+      /* Last line of defence. Reaching this step and failing here is the most
+         expensive possible moment to discover an unreadable file, because the
+         whole month has been reconciled by hand by now — which is exactly what
+         happened before this check existed at all. */
+      const readable = await checkFilesReadable(files, "midflow");
+      if (!readable.ok) {
+        setError(readable.message);
+        return;
+      }
+
       const body = new FormData();
       for (const f of files) body.append("files", f);
       body.append("purposes", JSON.stringify(purposes));

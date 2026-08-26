@@ -2375,6 +2375,27 @@ Tested against stubs standing in for placeholders: present files pass, one
 failure is named in the singular, two in the plural with the healthy file left
 out, and a file that never answers is caught at 15.0s rather than hanging.
 
+### Too late is its own kind of wrong
+
+The readability check went in on submit, and on the first real test it fired at
+the **download step** — after the whole month had been reconciled by hand. One
+receipt had been added without being copied to the desktop, sailed through
+Upload and Reconcile, and announced itself at the most expensive moment
+available. Bilal, correctly: *"this error message should have been presented
+much earlier."*
+
+A correct message at the wrong time is still a failure. The browser can answer
+"is this file here" the instant a file is dropped, so it now does: availability
+is checked on drop, offending files are marked in the file list itself — "still
+in the cloud, not on this computer" — and the button refuses to proceed while
+any remain.
+
+The check also now runs at Reconcile and at Download, because a file can be
+evicted back to the cloud between steps. Those two say something different from
+the Upload one on purpose: at Upload you add the files again and lose nothing,
+and later you lose the reconciliation. A remedy that glosses over that is the
+same kind of lie the rest of this session was spent removing.
+
 ### State
 
 All six checks pass — 90/90, 25/25 receipts, 0 ambiguous, build clean.

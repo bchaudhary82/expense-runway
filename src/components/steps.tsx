@@ -29,6 +29,8 @@ import {
 import { LineItemsTable } from "./LineItemsTable";
 import { Button, Card, IconCircle, StatusTag } from "./ui";
 
+const fileKey = (f: File) => `${f.name}:${f.size}`;
+
 function StepHeading({ title, blurb }: { title: string; blurb: string }) {
   return (
     <div className="mb-5">
@@ -55,20 +57,43 @@ export function UploadStep({
   const [files, setFiles] = useState<File[]>([]);
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [checking, setChecking] = useState(false);
+  /** Keys of files that are named here but whose contents are still in OneDrive. */
+  const [unavailable, setUnavailable] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  function addFiles(incoming: FileList | null) {
+  /**
+   * Check availability the moment files are NAMED, not when the upload starts.
+   *
+   * The first version of this check ran on submit, which was still too late to
+   * be useful: the one file that had not been copied to the desktop sailed
+   * through Upload and Reconcile and only announced itself at the download
+   * step, after the whole month had been reconciled by hand. The browser can
+   * answer this question the instant a file is dropped, so it should.
+   */
+  async function addFiles(incoming: FileList | null) {
     if (!incoming) return;
     setError(null);
+
+    const dropped = Array.from(incoming);
     setFiles((current) => {
-      const seen = new Set(current.map((f) => `${f.name}:${f.size}`));
-      const next = [...current];
-      for (const f of incoming) {
-        if (!seen.has(`${f.name}:${f.size}`)) next.push(f);
-      }
-      return next;
+      const seen = new Set(current.map(fileKey));
+      return [...current, ...dropped.filter((f) => !seen.has(fileKey(f)))];
     });
+
+    setChecking(true);
+    try {
+      const check = await checkFilesReadable(dropped);
+      setUnavailable((current) => {
+        const next = new Set(current);
+        for (const f of dropped) next.delete(fileKey(f));
+        for (const f of check.unreadableFiles) next.add(fileKey(f));
+        return next;
+      });
+    } finally {
+      setChecking(false);
+    }
   }
 
   function handleDrop(e: DragEvent<HTMLDivElement>) {
@@ -94,8 +119,11 @@ export function UploadStep({
       /* And check the files are actually HERE before sending any of them.
          The size check above is satisfied by metadata, which a cloud-only
          OneDrive placeholder supplies in full while holding no contents. */
+      /* Re-checked here as well as on drop, because a file can be evicted back
+         to the cloud between being added and being sent. */
       const readable = await checkFilesReadable(files);
       if (!readable.ok) {
+        setUnavailable(new Set(readable.unreadableFiles.map(fileKey)));
         setError(readable.message);
         return;
       }
@@ -238,6 +266,9 @@ export function UploadStep({
     );
   }
 
+  /* Named in the list, but the contents aren't on this computer. */
+  const blocked = files.filter((f) => unavailable.has(fileKey(f)));
+
   /* ---- before parsing ---- */
   return (
     <>
@@ -294,10 +325,16 @@ export function UploadStep({
           <div className="flex flex-col justify-center gap-3 lg:w-[240px]">
             <Button
               onClick={readFiles}
-              disabled={files.length === 0 || busy || !checkUploadSize(files).ok}
+              disabled={
+                files.length === 0 ||
+                busy ||
+                checking ||
+                blocked.length > 0 ||
+                !checkUploadSize(files).ok
+              }
               className="w-full"
             >
-              {busy ? "Reading…" : "Read my files"}
+              {checking ? "Checking files…" : busy ? "Reading…" : "Read my files"}
             </Button>
             <p className="text-center text-[13px] text-body">
               Nothing is saved. Files are read in memory and cleared when you
@@ -315,6 +352,11 @@ export function UploadStep({
               >
                 <span className="flex-1 truncate text-ink">
                   {f.name}
+                  {unavailable.has(fileKey(f)) && (
+                    <span className="ml-2 text-[13px] font-semibold text-block">
+                      — still in the cloud, not on this computer
+                    </span>
+                  )}
                   {looksLikeAFinishedReport(f.name) && (
                     <span className="ml-2 text-[13px] font-semibold text-warn">
                       — looks like a finished report, not an input
@@ -338,6 +380,17 @@ export function UploadStep({
               </li>
             ))}
           </ul>
+        )}
+
+        {blocked.length > 0 && (
+          <p className="mt-3 text-[13px] font-semibold text-block">
+            {blocked.length === 1
+              ? "1 file is still in the cloud"
+              : `${blocked.length} files are still in the cloud`}
+            . Open the folder in File Explorer, wait for the solid green check
+            beside each one — not the cloud outline — then remove them here and
+            add them again.
+          </p>
         )}
 
         {files.length > 0 && (
