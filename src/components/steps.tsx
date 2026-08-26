@@ -19,9 +19,11 @@ import {
 } from "@/lib/statement/format";
 import {
   checkUploadSize,
+  describeTransportFailure,
   formatBytes,
   looksLikeAFinishedReport,
   readError,
+  timeoutSignal,
 } from "@/lib/uploadLimits";
 import { LineItemsTable } from "./LineItemsTable";
 import { Button, Card, IconCircle, StatusTag } from "./ui";
@@ -91,15 +93,19 @@ export function UploadStep({
       const body = new FormData();
       for (const f of files) body.append("files", f);
 
-      const res = await fetch("/api/parse-statement", { method: "POST", body });
+      const res = await fetch("/api/parse-statement", {
+        method: "POST",
+        body,
+        signal: timeoutSignal(),
+      });
       if (!res.ok) {
         setError(await readError(res));
         return;
       }
       onFiles(files);
       onParsed((await res.json()) as ParseResponse);
-    } catch {
-      setError("Couldn't reach the server. Check your connection and try again.");
+    } catch (failure) {
+      setError(describeTransportFailure(failure));
     } finally {
       setBusy(false);
     }

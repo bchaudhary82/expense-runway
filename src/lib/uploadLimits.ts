@@ -94,3 +94,103 @@ export async function readError(response: Response): Promise<string> {
     ? body.trim()
     : `The server returned an error (${response.status}).`;
 }
+
+/* ---------------------------------------------------------------------------
+   When there is no reply at all.
+   --------------------------------------------------------------------------- */
+
+/**
+ * How long the browser waits before it stops expecting a reply.
+ *
+ * Deliberately LONGER than the server's own `maxDuration` of 120s. If this were
+ * shorter, the page would give up on work the server was still legitimately
+ * doing and blame the network for its own impatience. The margin is for the
+ * upload and the reply travelling, which on a slow office link is not nothing.
+ *
+ * Without any timeout a killed connection can leave `fetch` hanging with the
+ * spinner turning forever, which is the worst outcome of the three: no error,
+ * no result, nothing to act on.
+ */
+export const CLIENT_TIMEOUT_MS = 150_000;
+
+/** A timeout signal, where the browser has one. Older managed browsers don't. */
+export function timeoutSignal(ms = CLIENT_TIMEOUT_MS): AbortSignal | undefined {
+  return typeof AbortSignal !== "undefined" &&
+    typeof AbortSignal.timeout === "function"
+    ? AbortSignal.timeout(ms)
+    : undefined;
+}
+
+/**
+ * Turn a thrown request into a sentence that is actually true.
+ *
+ * `catch { "couldn't reach the server" }` was a guess wearing the clothes of a
+ * fact. It is reached by at least three different failures, only one of which
+ * is a connection problem, and it sent a user to check their wifi while their
+ * wifi was fine. That is the FOURTH time this app has described something other
+ * than what happened — see the 413 reported as a connection fault, the expired
+ * session that never existed, and the button that promised to defer a decision
+ * it was making.
+ *
+ * The three cases are genuinely different and want different next steps:
+ *
+ *   timed out      the server was still working, or died without saying so
+ *   cut off        a reply started and stopped — something in between closed it
+ *   never started  the request didn't complete a round trip at all
+ *
+ * The last one is the interesting one on a managed work laptop. The page itself
+ * loaded and the passcode POST worked, so the site is reachable and TLS is
+ * fine; what is different about this request is that it carries megabytes of
+ * files. Upload inspection is exactly the thing corporate proxies and DLP do,
+ * and a corporate card statement leaving for an outside domain is exactly what
+ * they are configured to stop. Saying so is more useful than "check your
+ * connection", and the hotspot test settles it in a minute.
+ *
+ * Always logs the underlying error, because the browser's own wording
+ * ("Failed to fetch" / "Load failed" / "NetworkError") is the one clue worth
+ * having and throwing it away is how this took a session to diagnose.
+ */
+export function describeTransportFailure(error: unknown): string {
+  console.error("[expense-runway] request failed without a usable reply:", error);
+
+  const name = error instanceof Error ? error.name : "";
+
+  if (name === "TimeoutError") {
+    return (
+      `The server didn't reply within ${Math.round(CLIENT_TIMEOUT_MS / 1000)} ` +
+      `seconds, so the page stopped waiting. A month with a lot of receipts can ` +
+      `genuinely take that long to read — try again with fewer files to see ` +
+      `whether it's the volume.`
+    );
+  }
+
+  if (name === "AbortError") {
+    return "That request was cancelled before it finished. Try again.";
+  }
+
+  if (name === "SyntaxError") {
+    return (
+      `The server began replying and the connection closed before the reply ` +
+      `finished, so there's nothing to show. That usually means something ` +
+      `between this laptop and the app cut the connection rather than the app ` +
+      `itself failing.`
+    );
+  }
+
+  /* This wording was pointed at a corporate proxy on the first diagnosis, and
+     the real cause turned out to be the files. Work expense files live in
+     OneDrive or SharePoint, and a cloud-only placeholder shows its real name
+     and size from metadata while the bytes are not on the disk — so the file
+     list looks perfectly normal and the upload dies the moment the browser
+     tries to read it. Leading with the network sent a person to test their
+     connection, which was never the problem. Most likely cause first. */
+  return (
+    `The upload stopped before the app received anything. The most common cause ` +
+    `is a file that isn't fully downloaded to this computer: files kept in ` +
+    `OneDrive or SharePoint show their name and size while the contents are ` +
+    `still in the cloud, and there is nothing to send. Copy the files to your ` +
+    `desktop first — wait for the solid green check, not the cloud outline — ` +
+    `and add them again from there. If they were already on the desktop, ` +
+    `something on the network is stopping the upload instead.`
+  );
+}

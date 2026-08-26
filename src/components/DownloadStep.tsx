@@ -19,7 +19,12 @@ import { applyResolutions, type Resolutions } from "@/lib/receipts/reconcile";
 import type { Purposes } from "@/lib/report/reportFormat";
 import { reportFileName } from "@/lib/report/reportFormat";
 import { billedTotal, formatMoney } from "@/lib/statement/format";
-import { checkUploadSize, readError } from "@/lib/uploadLimits";
+import {
+  checkUploadSize,
+  describeTransportFailure,
+  readError,
+  timeoutSignal,
+} from "@/lib/uploadLimits";
 import { Button, Card, StatusTag } from "./ui";
 
 export function DownloadStep({
@@ -105,7 +110,11 @@ export function DownloadStep({
         ),
       );
 
-      const res = await fetch("/api/build-report", { method: "POST", body });
+      const res = await fetch("/api/build-report", {
+        method: "POST",
+        body,
+        signal: timeoutSignal(),
+      });
       if (!res.ok) {
         setError(await readError(res));
         return;
@@ -121,8 +130,12 @@ export function DownloadStep({
       a.remove();
       URL.revokeObjectURL(url);
       setDone(reportFileName(edits.rows, statementDate));
-    } catch {
-      setError("Couldn't build the document. Try again.");
+    } catch (failure) {
+      /* Same three failures as the other two steps, and the old wording had the
+         same problem: "couldn't build the document" points at the report when
+         the report was very likely never built, because the request carrying
+         the receipts never arrived. */
+      setError(describeTransportFailure(failure));
     } finally {
       setBusy(false);
     }

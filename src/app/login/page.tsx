@@ -11,6 +11,7 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { TopBar } from "@/components/TopBar";
 import { Button, Card, StatusTag } from "@/components/ui";
+import { describeTransportFailure } from "@/lib/uploadLimits";
 
 function LoginForm() {
   const router = useRouter();
@@ -40,8 +41,8 @@ function LoginForm() {
       }
       router.replace(params.get("next") ?? "/");
       router.refresh();
-    } catch {
-      setError("Couldn't reach the server. Check your connection and try again.");
+    } catch (failure) {
+      setError(describeTransportFailure(failure));
     } finally {
       setBusy(false);
     }
