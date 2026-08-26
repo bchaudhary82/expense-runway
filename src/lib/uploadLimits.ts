@@ -61,6 +61,92 @@ export function checkUploadSize(files: File[]): SizeCheck {
   };
 }
 
+/* ---------------------------------------------------------------------------
+   Files that are named but not actually here.
+   --------------------------------------------------------------------------- */
+
+/**
+ * How long to wait for a single byte before giving up on a file.
+ *
+ * Touching a cloud-only file is often what makes OneDrive start fetching it, so
+ * a slow answer usually means "downloading now" rather than "broken". Waiting is
+ * therefore the right default — but not forever, because the alternative to a
+ * bounded wait here is an unbounded one on the upload, which is the failure this
+ * check exists to remove.
+ */
+const FIRST_BYTE_TIMEOUT_MS = 15_000;
+
+export interface ReadCheck {
+  ok: boolean;
+  /** Names of the files whose contents could not be read. */
+  unreadable: string[];
+  /** Plain-language problem statement, or null when every file is here. */
+  message: string | null;
+}
+
+/** Can one byte of this file actually be produced? */
+async function readableWithin(file: File, ms: number): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      file.slice(0, 1).arrayBuffer(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("timed out")), ms);
+      }),
+    ]);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+/**
+ * Refuse to upload files whose contents aren't on this computer.
+ *
+ * THE SIZE CHECK ABOVE CANNOT CATCH THIS, and the reason is the whole point of
+ * this function: a size is METADATA. Work expense files live in OneDrive or
+ * SharePoint with Files On-Demand, where a cloud-only placeholder reports its
+ * real name and its real size while holding no contents at all. So the file
+ * list looks perfectly normal, the size check passes, and the upload dies the
+ * moment the browser tries to read the bytes — with no HTTP reply, which the
+ * page could only report as a connection fault. Bilal lost a session to exactly
+ * that on his work laptop.
+ *
+ * Reading ONE BYTE is the smallest question that distinguishes a real file from
+ * a placeholder, and unlike the size it cannot be answered from metadata.
+ *
+ * Names the files, because "some of your files aren't available" leaves a person
+ * comparing a folder against a list. The size check already sets this
+ * precedent by naming the biggest files.
+ */
+export async function checkFilesReadable(files: File[]): Promise<ReadCheck> {
+  const checked = await Promise.all(
+    files.map(async (file) => ({
+      name: file.name,
+      ok: await readableWithin(file, FIRST_BYTE_TIMEOUT_MS),
+    })),
+  );
+
+  const unreadable = checked.filter((c) => !c.ok).map((c) => c.name);
+  if (unreadable.length === 0) {
+    return { ok: true, unreadable: [], message: null };
+  }
+
+  const list = unreadable.map((n) => `"${n}"`).join(", ");
+  return {
+    ok: false,
+    unreadable,
+    message:
+      `${unreadable.length === 1 ? "1 file isn't" : `${unreadable.length} files aren't`} ` +
+      `on this computer yet: ${list}. Files kept in OneDrive or SharePoint show ` +
+      `their name and size while the contents are still in the cloud, so there ` +
+      `is nothing to send. Open the folder, wait for the solid green check ` +
+      `beside each one — not the cloud outline — then add them again.`,
+  };
+}
+
 /**
  * A finished report from a previous month, mistakenly added as an input.
  *

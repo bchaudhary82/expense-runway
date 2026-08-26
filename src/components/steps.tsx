@@ -18,6 +18,7 @@ import {
   formatMoney,
 } from "@/lib/statement/format";
 import {
+  checkFilesReadable,
   checkUploadSize,
   describeTransportFailure,
   formatBytes,
@@ -90,6 +91,15 @@ export function UploadStep({
     setBusy(true);
     setError(null);
     try {
+      /* And check the files are actually HERE before sending any of them.
+         The size check above is satisfied by metadata, which a cloud-only
+         OneDrive placeholder supplies in full while holding no contents. */
+      const readable = await checkFilesReadable(files);
+      if (!readable.ok) {
+        setError(readable.message);
+        return;
+      }
+
       const body = new FormData();
       for (const f of files) body.append("files", f);
 

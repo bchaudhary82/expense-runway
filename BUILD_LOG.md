@@ -2353,10 +2353,31 @@ Per non-negotiable 0, the rendered image was **opened and looked at**, not
 counted — text present, wrapping correct, height measured to the content so a
 short form doesn't eat a report page in whitespace.
 
+### Catching the placeholder before it is sent
+
+Added after the rest shipped. The size check that guards every upload is
+satisfied by METADATA, and that is precisely what a cloud-only placeholder
+supplies in full — real name, real size, no contents. So it passed, and the
+upload died a second later with no HTTP reply.
+
+`checkFilesReadable()` asks for ONE BYTE of each file before anything is sent.
+It is the smallest question that separates a real file from a placeholder, and
+unlike the size it cannot be answered from metadata. The files that fail are
+named, following the size check's precedent — "some of your files aren't
+available" leaves a person comparing a folder against a list.
+
+Touching a placeholder is often what makes OneDrive start fetching it, so a slow
+answer usually means "downloading now" rather than "broken". Waiting is the
+right default, bounded at 15s — the alternative to a bounded wait here is an
+unbounded one on the upload, which is the failure being removed.
+
+Tested against stubs standing in for placeholders: present files pass, one
+failure is named in the singular, two in the plural with the healthy file left
+out, and a file that never answers is caught at 15.0s rather than hanging.
+
 ### State
 
-All six checks pass — 90/90, 25/25 receipts, 0 ambiguous, build clean. Nothing
-committed or deployed yet.
+All six checks pass — 90/90, 25/25 receipts, 0 ambiguous, build clean.
 
 **Still open:** the flag list is still a snapshot. It can no longer produce a
 wrong answer, but cards don't shrink their candidate lists as decisions land.
