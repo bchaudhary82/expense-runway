@@ -2247,3 +2247,124 @@ item 16 (browser-side extraction, only if the ceiling starts biting), item 17
 
 **Next: colleagues.** The rollout ask is one sentence — scan rather than
 photograph — and everything else is done.
+
+---
+
+## Session 12 — First real use on someone else's laptop
+
+Bilal ran a live month on his work laptop. Four failures surfaced, none of which
+any of the six checks could have caught, because all four live in territory the
+fixtures do not cover: another machine, another month, and a document the
+extractor could not see.
+
+### The upload that blamed the network
+
+The first files never uploaded. "Couldn't reach the server. Check your
+connection and try again." — a message this log has now had to correct **four
+times** for describing something other than what happened.
+
+It was not the network. Work laptops keep expense files in OneDrive with Files
+On-Demand, and a cloud-only placeholder reports its real name and size from
+metadata while the bytes are not on disk. The browser only finds out when it
+starts streaming the upload, at which point the request body errors and `fetch`
+rejects with no reply — which the client reported as a connection fault.
+
+Proved by elimination rather than argument: 2.4 MB of real fixtures through
+`/api/parse-statement` locally returned **200 in 0.73s**, and a 2.6 MB multipart
+POST to production was **accepted in full in 1.0s**. The app and the platform
+were both fine. Copying the files to the desktop first — forcing OneDrive to
+hydrate them — fixed it outright.
+
+The cause was diagnosable in one glance at DevTools and cost a session instead,
+because all four `catch` blocks were written `catch { }` with **no error
+binding at all**. `describeTransportFailure()` now separates timed out / cut off
+mid-reply / never completed, logs the browser's own wording, and every call site
+carries a client timeout longer than the server's `maxDuration` — there was
+none, so a killed connection could spin forever with no error at all.
+
+> A bare `catch` is not error handling. It is the deletion of the only evidence.
+
+### Three cards, one receipt, and a button that lied
+
+Reconciliation raised cards that contradicted each other. Every spare receipt was
+offered inside **every** "receipt missing" card at once, and separately got its
+own ambiguous or extra-receipt card — because the flag list is built once on the
+server and never re-derived as decisions arrive.
+
+Underneath it was something worse and silent: `assignments` is rowIndex ->
+imageIndex, so **two lines could hold the same receipt**, and generation embedded
+it under both with no dedupe. A report that builds clean, totals correctly, and
+puts one receipt under two expenses looking entirely deliberate.
+
+Fixed at both ends, per the rule this file already had about disabled buttons:
+the screen refuses to offer a receipt another line has claimed and names that
+line, and `build-report` refuses the request outright.
+
+Bilal's actual question was sharper than the bug report: *attach a receipt from
+the missing-receipt card, then hit "leave it out" on the extra-receipt card for
+that same receipt — what happens?* The answer was that `ignore` is a no-op, so
+the attach won and the button's stated effect was false. `applyResolutions` now
+works out what is outstanding **after** every assignment is known, so a card
+whose subject was settled elsewhere stops asking.
+
+And the two buttons a few words apart with opposite consequences — "Leave it
+out" (does nothing) beside "Personal charge — leave it out" (removes a line and
+its money) — now say which thing leaves.
+
+### Refunds were arguing with their own charges
+
+July's statement carried a grocery charge and the refund reversing it. Amount
+comparison is deliberately sign-blind so a credit note can find its line, so one
+receipt fitted **both** equally well: two ambiguous cards with one sensible
+answer, plus a refund line demanding a receipt it can never have.
+
+Sign agreement is now preferred rather than required — disagreeing signs stay
+matchable but lose every tie — and credit lines no longer demand receipts.
+Reproduced from the screenshots first: **2 ambiguous cards to 0**, receipt
+auto-attaching to the charge. `eval:receipts` still 25/25, 0 ambiguous.
+
+### The form the extractor could not see
+
+When a receipt is genuinely gone the team types a MISSING RECEIPT box — date,
+amount, reason — into the same .docx that carries the month's rideshare
+receipts. `extractFromDocx` reads `word/media/`, which holds embedded images.
+Typed text has no image. The form was invisible.
+
+Saving the document as a PDF would have worked and was rejected: the same file
+carries the rideshare receipts as embedded images pulled at their own
+resolution, and converting turns each into a full Word page with the receipt
+marooned inside the margins, putting the 1600px cap on the page instead of the
+receipt. This project has shipped unreadable receipts once already over exactly
+that trade.
+
+So `missingReceiptForm.ts` reads `word/document.xml` instead, and **no model
+runs on it**. The date and amount are typed by a person as the authoritative
+record — already exact. Paying a vision model to guess back numbers we can
+simply read would cost money to make the answer worse. Same principle that kept
+the statement parser deterministic.
+
+Word splits one typed line into as many `<w:t>` runs as it likes, and puts tabs
+outside the runs entirely, so "Amount:<tab/>$4.75" has to be reassembled before
+anything is matched. Tested against a document built with the real `docx`
+library rather than hand-written XML: both forms parsed, `$1,204.50` and
+`July 14, 2026` normalised correctly.
+
+Per non-negotiable 0, the rendered image was **opened and looked at**, not
+counted — text present, wrapping correct, height measured to the content so a
+short form doesn't eat a report page in whitespace.
+
+### State
+
+All six checks pass — 90/90, 25/25 receipts, 0 ambiguous, build clean. Nothing
+committed or deployed yet.
+
+**Still open:** the flag list is still a snapshot. It can no longer produce a
+wrong answer, but cards don't shrink their candidate lists as decisions land.
+Re-deriving live means teaching `reconcile()` about decisions already made and
+keeping flag IDs stable so existing resolutions aren't orphaned — a change to
+how the step holds state, not a patch.
+
+> Four failures, four blind spots, one shape: every check in this project runs
+> on Bilal's machine, against his fixtures, on months that already worked. None
+> of them could see a different laptop, a refund, or a document with no images
+> in it.
