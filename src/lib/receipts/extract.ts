@@ -20,6 +20,13 @@
  */
 import path from "node:path";
 import { getDocumentProxy, renderPageAsImage } from "unpdf";
+import {
+  docxParagraphs,
+  findMissingReceiptForms,
+  formReading,
+  renderMissingReceiptForm,
+} from "./missingReceiptForm";
+import type { ReceiptReading } from "./vision";
 
 export interface ReceiptImage {
   /** Where it came from, for showing the user which receipt is which. */
@@ -41,6 +48,15 @@ export interface ReceiptImage {
   data: Uint8Array;
   width: number;
   height: number;
+  /**
+   * A reading that is already known exactly, so no model runs on this image.
+   *
+   * Set for the typed MISSING RECEIPT forms, whose date and amount are read
+   * straight out of the Word document. Sending a picture of typed text to a
+   * vision model to guess back numbers we can already read would cost money to
+   * make the answer worse.
+   */
+  known?: ReceiptReading;
 }
 
 /**
@@ -307,6 +323,37 @@ export async function extractFromDocx(
       // than crashing the whole extraction.
     }
   }
+
+  /* The typed MISSING RECEIPT forms, which have no embedded image at all.
+     They come AFTER the media images and in document order, because both
+     /api/reconcile and /api/build-report extract the same file independently
+     and match readings to images by position. Any ordering that isn't stable
+     between those two runs would put receipts under the wrong expenses. */
+  const document = zip.file("word/document.xml");
+  if (document) {
+    const forms = findMissingReceiptForms(
+      docxParagraphs(await document.async("string")),
+    );
+    /* The renderer draws text, so the bundled font has to be registered first —
+       the failure mode otherwise is a blank white box in production and a
+       perfect one on a laptop that happens to have fonts installed. */
+    if (forms.length > 0) await ensureFonts();
+
+    for (const [i, form] of forms.entries()) {
+      try {
+        const img = await renderMissingReceiptForm(form);
+        out.push({
+          source,
+          index: media.length + i + 1,
+          known: formReading(form),
+          ...img,
+        });
+      } catch (error) {
+        console.error(`[extract] could not render a missing-receipt form:`, error);
+      }
+    }
+  }
+
   return out;
 }
 

@@ -52,7 +52,9 @@ export async function POST(request: Request) {
       source: img.source,
       page: img.index,
       documentGroup: img.documentGroup,
-      reading: await readReceipt(img.data),
+      /* A typed missing-receipt form already states its date and amount
+         exactly. Nothing to read, nothing to pay for, nothing to misread. */
+      reading: img.known ?? (await readReceipt(img.data)),
       thumb: await thumbnail(img.data),
     })),
   );
