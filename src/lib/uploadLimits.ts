@@ -73,8 +73,19 @@ export function checkUploadSize(files: File[]): SizeCheck {
  * therefore the right default — but not forever, because the alternative to a
  * bounded wait here is an unbounded one on the upload, which is the failure this
  * check exists to remove.
+ *
+ * RAISED FROM 15s AFTER MEASURING IT. On a real month on a real work laptop the
+ * hydration took slightly OVER fifteen seconds and then succeeded — meaning the
+ * first value was close enough to the truth to fail files that were downloading
+ * perfectly well. That error would be worse than the one this check exists to
+ * prevent: it would name a healthy file as missing and send someone to fix
+ * something that isn't broken.
+ *
+ * A generous ceiling costs a slow user nothing they weren't already paying —
+ * the download has to happen either way, here or during the upload — and it is
+ * the difference between a true report and a confident wrong one.
  */
-const FIRST_BYTE_TIMEOUT_MS = 15_000;
+const FIRST_BYTE_TIMEOUT_MS = 60_000;
 
 export interface ReadCheck {
   ok: boolean;

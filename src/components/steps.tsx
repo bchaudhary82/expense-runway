@@ -323,6 +323,16 @@ export function UploadStep({
           </div>
 
           <div className="flex flex-col justify-center gap-3 lg:w-[240px]">
+            {checking && (
+              /* Explain the pause. Touching a cloud-only file is what makes
+                 OneDrive start downloading it, so this wait IS the download —
+                 measured at slightly over fifteen seconds on a real month. A
+                 silent pause that long reads as the app having hung. */
+              <p className="text-[13px] text-body">
+                Fetching anything still stored in OneDrive. This can take a
+                minute the first time.
+              </p>
+            )}
             <Button
               onClick={readFiles}
               disabled={
@@ -334,7 +344,7 @@ export function UploadStep({
               }
               className="w-full"
             >
-              {checking ? "Checking files…" : busy ? "Reading…" : "Read my files"}
+              {checking ? "Getting your files…" : busy ? "Reading…" : "Read my files"}
             </Button>
             <p className="text-center text-[13px] text-body">
               Nothing is saved. Files are read in memory and cleared when you

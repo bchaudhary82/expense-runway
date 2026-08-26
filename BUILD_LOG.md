@@ -2396,6 +2396,28 @@ the Upload one on purpose: at Upload you add the files again and lose nothing,
 and later you lose the reconciliation. A remedy that glosses over that is the
 same kind of lie the rest of this session was spent removing.
 
+### The timeout was set from a guess and measured at nearly the same number
+
+The one-byte check was given fifteen seconds on the reasoning that touching a
+placeholder is often what makes OneDrive fetch it. Then a real month on a real
+work laptop did exactly that and took **slightly over fifteen seconds before
+succeeding.**
+
+So the first value was close enough to the truth to start failing files that
+were downloading perfectly well — naming a healthy file as missing and sending
+someone to fix something that was not broken. That is a worse error than the one
+the check exists to prevent, because it is confidently wrong rather than merely
+unhelpful.
+
+Raised to sixty seconds. A generous ceiling costs a slow user nothing they were
+not already paying: the download has to happen either way, here or during the
+upload. And the wait is now explained rather than silent — a fifteen-second
+pause with no label reads as the app having hung, which is how it read.
+
+> The guess was not unreasonable and was still wrong by a hair. The only reason
+> it is known at all is that someone ran it on their own machine and said how
+> long it took.
+
 ### State
 
 All six checks pass — 90/90, 25/25 receipts, 0 ambiguous, build clean.
