@@ -154,6 +154,20 @@ Do these in order. Don't skip ahead — each step is testable on its own.
 
 ### Settled, do not re-open
 
+- **A blank purpose does NOT block the report.** Reviewed Aug 28, 2026 after a
+  demo to colleagues, where it looked like a missing guard and a fix was scoped.
+  It is deliberate: an empty purpose renders as `[ADD PURPOSE HERE]`, and the
+  report is meant to be finishable in Word afterwards — which is how the team's
+  filed reports already work. Bilal, on being shown that blocking would remove
+  that path: *"I think it's good to leave it blank, and then it can be edited
+  afterwards if necessary."*
+  It will keep looking like an oversight, because a required field that isn't
+  enforced always does. It isn't one. Do not add the guard.
+  *(For reference if it is ever genuinely wanted: it goes at the UI and the
+  build-report route, never inside `buildReportDocument` — `verify:report` and
+  `verify:layout` both build with empty purposes on purpose and assert the
+  placeholder appears.)*
+
 - **The per-row amount override stays.** Reviewed Aug 10, 2026 and kept
   deliberately. It lets a statement amount be replaced by hand, and it is
   guarded three ways: the amount turns amber, a banner names the count, and
