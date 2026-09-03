@@ -313,6 +313,46 @@ polish: items 10 and 11 are things that will break or bite in normal use.
     AND their photos are JPEG rather than HEIC. Otherwise the fix for photos is
     not code.
 
+20. **The download step occasionally fails, and that is ACCEPTED.** Decided
+    Sept 3, 2026 after measuring it. Do not re-investigate from scratch — the
+    elimination below is done and the numbers are real.
+
+    Symptom: pressing "Download Word document" sometimes returns nothing at all
+    (`fetch` rejects, no HTTP reply). Intermittent. When it succeeds it can take
+    ~30s.
+
+    Measured against a real July month, on a laptop, end to end:
+
+    | | Measured | Limit |
+    |---|---|---|
+    | Request up | 2.71 MB | 4.5 MB |
+    | Response (.docx) | 2.26 MB | 4.5 MB |
+    | Server time | 10.3s | declared 120s |
+    | Peak memory | 273 MB | 1024 MB |
+
+    All clear, so it is none of those. **The account is Hobby, where Vercel caps
+    function duration at 60s regardless of `maxDuration = 120` in the route** —
+    the app asks for two minutes and gets one. Real-world runs land around 30s
+    on Vercel's slower shared CPU, so a slow run straddles the ceiling, gets
+    killed mid-request, and the browser sees a dead connection.
+
+    **Why it is tolerable: a failure costs one click.** The error path only sets
+    a message — reconciliation, purposes, exclusions and overrides all survive
+    in the page. Pressing Download again usually succeeds, faster, because the
+    function is warm. Nothing is lost and nothing is redone by hand. Tell
+    colleagues exactly that.
+
+    Do NOT "fix" this by raising `maxDuration` — Hobby will clamp it and the
+    number in the code will be another thing that lies. The real fixes are item
+    16, or Vercel Pro (higher ceiling and faster CPU, ~5 minutes and $20/mo).
+    Bilal chose to leave it: *"the Hobby count is working fine, we'll just leave
+    it."*
+
+    Extraction is ~95% of that time and **runs twice per report** — once at
+    reconcile, once at download, on the same files — because the server
+    deliberately forgets everything between requests. That is where the time is
+    if anyone goes looking.
+
 16. **Extraction in the browser.** ~half a day. The proper fix for item 10:
     unzip the `.docx` and render PDF pages client-side, so only small receipt
     images cross the wire for matching and the finished document is assembled

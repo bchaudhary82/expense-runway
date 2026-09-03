@@ -2432,3 +2432,63 @@ how the step holds state, not a patch.
 > on Bilal's machine, against his fixtures, on months that already worked. None
 > of them could see a different laptop, a refund, or a document with no images
 > in it.
+
+
+---
+
+## Session 13 — An intermittent failure, and two wrong diagnoses before a number
+
+The download step began failing sometimes: request sent, nothing back, no
+report. It was chased through three explanations, two of which were confidently
+wrong and shipped as user-facing text.
+
+**First it was blamed on the files.** A message rewritten in session 12 told
+people the likeliest cause was an unhydrated OneDrive file. Then a run whose
+files were all on the desktop with green checks hit exactly the same failure. So
+that was wrong — and it was the second time this same message had named a cause
+nobody had verified, the first being a corporate proxy.
+
+The message now names no cause at all. It says what happened, and carries the
+browser's own words out to the screen so the next report arrives with evidence
+instead of "it broke at the end". **A hypothesis in a user-facing string is
+indistinguishable from a fact, and it outlives the session that wrote it.**
+
+**Then it was measured instead.** Against a real month, end to end: 2.71 MB up,
+2.26 MB down, 10.3s, 273 MB peak — against limits of 4.5 MB, 4.5 MB, 120s and
+1024 MB. Nothing close. Which meant the answer was not in the code, and no
+further amount of reading it would produce one.
+
+**The answer was one word in a screenshot.** The account is Hobby, where Vercel
+caps function duration at 60s no matter what `maxDuration` says. The route asks
+for 120 and gets 60; real runs land near 30s on shared CPU; a slow one goes over
+and the container is killed mid-request. Intermittent, timing-shaped, and
+invisible from inside the application.
+
+### Two instruments, added because guessing had run out
+
+The route now times itself and returns `x-ms-*` headers, with the download line
+reporting "Built in Ns" — so a slow run says how close it came without anyone
+opening developer tools.
+
+And the login page now shows the commit it was built from. During this session a
+fix went out, the next run behaved like the old code, and there was no way to
+tell whether the deploy had landed, the browser was holding a cached bundle, or
+the bug was simply still there. That uncertainty cost more than the bug did. It
+is answerable in one glance now, before sign-in, because "is the fix live?"
+cannot be answered from inside an app you have to sign into.
+
+*(Deploys were landing. Confirmed by pulling the deployed JavaScript apart and
+finding the new strings in it — which is the sort of thing the stamp now makes
+unnecessary.)*
+
+### Decided: leave it
+
+A failure costs one click. The error path only sets a message; reconciliation,
+purposes, exclusions and overrides all survive in the page, and the retry is
+usually faster because the function is warm. Bilal: *"the Hobby count is working
+fine, we'll just leave it."* Filed as item 20 with the full elimination, so the
+next session does not repeat it.
+
+> Three sessions of this project have now ended with the same lesson in a
+> different costume: **the thing that reads like a diagnosis is usually a
+> hypothesis, and writing it into the product makes it permanent.**
