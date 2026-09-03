@@ -27,6 +27,26 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/api/**": ["./assets/fonts/*.woff"],
   },
+
+  /**
+   * Stamp the build with the commit it came from.
+   *
+   * WHY THIS IS HERE. A whole debugging session went into an intermittent
+   * failure without anyone being able to say which version was actually
+   * running. A fix would go out, the next run would behave like the old code,
+   * and there was no way to tell whether the deploy had landed, whether the
+   * browser was holding a cached bundle, or whether the bug was real. That
+   * uncertainty is more expensive than the bug.
+   *
+   * `env` inlines the value at BUILD time, so it reaches the browser without
+   * depending on Vercel's "expose system environment variables" setting being
+   * on. A commit hash is not a secret — it is the same hash that is public in
+   * the repository — so this is safe to show before sign-in, which is the whole
+   * point: the version has to be readable without getting into the app.
+   */
+  env: {
+    BUILD_SHA: (process.env.VERCEL_GIT_COMMIT_SHA ?? "local").slice(0, 7),
+  },
 };
 
 export default nextConfig;

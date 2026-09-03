@@ -19,6 +19,7 @@ export async function GET() {
     /* The one this exists for: false means passcode attempts are still counted
        per serverless instance, whatever the Vercel dashboard says. */
     sharedRateLimitStore: usingSharedStore(),
+    build: process.env.BUILD_SHA ?? "unknown",
     passcodeConfigured: Boolean(process.env.APP_PASSCODE),
     receiptReadingConfigured: Boolean(process.env.ANTHROPIC_API_KEY),
   });

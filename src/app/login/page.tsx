@@ -109,6 +109,11 @@ function LoginForm() {
         Nothing you upload is stored. Files are read in memory and cleared when
         you refresh.
       </p>
+
+      {/* Which build is actually running. Readable before sign-in on purpose:
+          the question "is the fix live yet, or am I testing the old code?"
+          cannot be answered from inside an app you have to sign into. */}
+      <p className="mt-2 text-[12px] text-body/70">build {process.env.BUILD_SHA}</p>
     </Card>
   );
 }
