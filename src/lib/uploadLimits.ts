@@ -269,6 +269,13 @@ export function describeTransportFailure(error: unknown): string {
 
   const name = error instanceof Error ? error.name : "";
 
+  /* The browser's own words — "Failed to fetch", "Load failed", "NetworkError".
+     Shown to the user, not merely logged, because the person who hits this will
+     not open developer tools, and without it a report reaching us says only
+     "it broke at the end". */
+  const detail =
+    error instanceof Error && error.message ? error.message : String(error);
+
   if (name === "TimeoutError") {
     return (
       `The server didn't reply within ${Math.round(CLIENT_TIMEOUT_MS / 1000)} ` +
@@ -285,26 +292,29 @@ export function describeTransportFailure(error: unknown): string {
   if (name === "SyntaxError") {
     return (
       `The server began replying and the connection closed before the reply ` +
-      `finished, so there's nothing to show. That usually means something ` +
-      `between this laptop and the app cut the connection rather than the app ` +
-      `itself failing.`
+      `finished, so there's nothing to show. Please try again, and if it keeps ` +
+      `happening report this line: "${detail}".`
     );
   }
 
-  /* This wording was pointed at a corporate proxy on the first diagnosis, and
-     the real cause turned out to be the files. Work expense files live in
-     OneDrive or SharePoint, and a cloud-only placeholder shows its real name
-     and size from metadata while the bytes are not on the disk — so the file
-     list looks perfectly normal and the upload dies the moment the browser
-     tries to read it. Leading with the network sent a person to test their
-     connection, which was never the problem. Most likely cause first. */
+  /* DO NOT NAME A CAUSE HERE.
+
+     This message has now been wrong twice in the same way. It first blamed the
+     network, and the cause turned out to be OneDrive placeholders. It was then
+     rewritten to blame OneDrive with equal confidence — and a run whose files
+     were all on the desktop with green checks hit it again, so that was wrong
+     too. Both times the wording was a hypothesis wearing the clothes of a
+     diagnosis, which is the exact failure this file exists to correct, and it
+     survived being corrected once already.
+
+     The page genuinely does not know why the request produced no reply. It
+     knows THAT it did, and it knows what the browser called it. Say those two
+     things, offer the one action worth trying, and carry the detail out to
+     somewhere a person can report it from. */
   return (
-    `The upload stopped before the app received anything. The most common cause ` +
-    `is a file that isn't fully downloaded to this computer: files kept in ` +
-    `OneDrive or SharePoint show their name and size while the contents are ` +
-    `still in the cloud, and there is nothing to send. Copy the files to your ` +
-    `desktop first — wait for the solid green check, not the cloud outline — ` +
-    `and add them again from there. If they were already on the desktop, ` +
-    `something on the network is stopping the upload instead.`
+    `The upload didn't complete — the request went out and nothing came back, ` +
+    `so the report wasn't built. The page can't tell why from here. Try once ` +
+    `more, and if it happens again please report this line, which is what the ` +
+    `browser saw: "${detail}".`
   );
 }
