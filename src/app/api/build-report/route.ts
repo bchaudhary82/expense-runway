@@ -56,7 +56,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No files were uploaded." }, { status: 400 });
   }
 
+  /* Timed, because this route has failed intermittently in production while
+     completing in 10s locally, and every explanation offered for it so far has
+     been a guess. The numbers come back on the response so a real run reports
+     what it actually cost, rather than what a laptop says it should. */
+  const startedAt = Date.now();
   const input = await runPipeline(files);
+  const extractedAt = Date.now();
   if ("error" in input) {
     return NextResponse.json({ error: input.error }, { status: 422 });
   }
@@ -145,8 +151,18 @@ export async function POST(request: Request) {
     receiptsByRowIndex,
   };
 
+  const renderedAt = Date.now();
+
   const buffer = await Packer.toBuffer(
     buildReportDocument(edits.rows, edits.purposes, reportImages),
+  );
+  const finishedAt = Date.now();
+
+  console.log(
+    `[build-report] ${edits.rows.length} rows, ${input.images.length} images, ` +
+      `${(buffer.length / 1024 / 1024).toFixed(2)} MB out — ` +
+      `extract ${extractedAt - startedAt}ms, screenshot ${renderedAt - extractedAt}ms, ` +
+      `docx ${finishedAt - renderedAt}ms, total ${finishedAt - startedAt}ms`,
   );
 
   return new Response(new Uint8Array(buffer), {
@@ -159,6 +175,11 @@ export async function POST(request: Request) {
       "x-excluded": String(edits.excludedCount),
       "x-overridden": String(edits.overriddenRows.length),
       "x-unreadable-files": String(input.unreadable.length),
+      "x-ms-total": String(finishedAt - startedAt),
+      "x-ms-extract": String(extractedAt - startedAt),
+      "x-ms-screenshot": String(renderedAt - extractedAt),
+      "x-ms-docx": String(finishedAt - renderedAt),
+      "x-images": String(input.images.length),
     },
   });
 }

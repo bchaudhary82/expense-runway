@@ -51,6 +51,8 @@ export function DownloadStep({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  /** How long the server took, so a slow run reports itself without dev tools. */
+  const [tookMs, setTookMs] = useState<number | null>(null);
 
   if (rows.length === 0) {
     return (
@@ -93,6 +95,7 @@ export function DownloadStep({
     setBusy(true);
     setError(null);
     setDone(null);
+    setTookMs(null);
     try {
       /* Last line of defence. Reaching this step and failing here is the most
          expensive possible moment to discover an unreadable file, because the
@@ -130,6 +133,16 @@ export function DownloadStep({
         setError(await readError(res));
         return;
       }
+
+      const serverMs = Number(res.headers.get("x-ms-total") ?? "");
+      setTookMs(Number.isFinite(serverMs) && serverMs > 0 ? serverMs : null);
+      console.log(
+        `[expense-runway] build-report: total ${res.headers.get("x-ms-total")}ms ` +
+          `(extract ${res.headers.get("x-ms-extract")}ms, ` +
+          `screenshot ${res.headers.get("x-ms-screenshot")}ms, ` +
+          `docx ${res.headers.get("x-ms-docx")}ms) ` +
+          `from ${res.headers.get("x-images")} images`,
+      );
 
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -238,6 +251,7 @@ export function DownloadStep({
           <p className="mt-4 text-[14px] text-body">
             <span className="font-semibold text-ink">Downloaded.</span> {done} —
             nothing was saved anywhere; refreshing this page clears everything.
+            {tookMs !== null && ` Built in ${(tookMs / 1000).toFixed(1)}s.`}
           </p>
         )}
       </Card>
